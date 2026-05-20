@@ -11,7 +11,7 @@ inspired by [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) 
 
 OMH is skill-first and plugin-optional:
 - Skills work standalone.
-- The optional plugin adds role injection, state tools, evidence tooling, keyword routing, and CLI helpers.
+- The optional plugin adds role injection, state tools, evidence tooling, keyword routing, CLI helpers, and strict anti-lazy/evidence enforcement hooks.
 
 [Quick Start](#quick-start) • [Workflow Map](#workflow-map) • [Features](#features) • [Documentation](#documentation)
 
@@ -45,6 +45,19 @@ ln -snf "$PWD/plugins/omh/skills" ~/.hermes/skills/omh
 ```
 
 Then restart Hermes so hooks/tools are reloaded.
+
+If you previously used standalone `omc-enforcer`, migrate to OMH-native enforcement:
+
+```bash
+hermes plugins disable omc-enforcer
+hermes plugins enable omh
+```
+
+If your host has an `omc-guardian.timer` that rewrites plugin settings, disable it:
+
+```bash
+systemctl --user disable --now omc-guardian.timer
+```
 
 ### Step 3: Verify and run
 
@@ -165,8 +178,15 @@ The plugin at `plugins/omh/` provides:
 - `omh_state` tool for workflow state, status snapshots, locks, cancel signals, and role loading
 - `omh_gather_evidence` tool for allowlisted verification command capture
 - `pre_llm_call` hook for `[omh-role:NAME]` role injection, active-mode reminders, and OMH keyword routing
-- `pre_tool_call` hook for role marker validation
-- `on_session_end` hook for interruption bookkeeping
+- `pre_tool_call` hook for role marker validation and destructive command blocking
+- `post_llm_call` hook for anti-lazy/false-completion gate and Ralph close scoring
+- `post_tool_call` hook for evidence ledger persistence
+- `on_session_start` + `on_session_end`/`on_session_finalize`/`on_session_reset` hooks for workflow lifecycle bookkeeping
+- compatibility outbound guard hook `pre_gateway_send` (used where runtime supports it)
+
+Strict-enforcer runtime controls:
+- `OMH_ENFORCER_ENABLED` (`1` by default) — set `0` to disable strict enforcement layer
+- `OMH_ENFORCER_STATE_FILE` — override state ledger path (default: `~/.hermes/state/omh-enforcer/workflow-state.json`)
 
 See details: [`docs/plugin.md`](docs/plugin.md)
 

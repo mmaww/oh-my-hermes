@@ -11,7 +11,7 @@
 
 OMH 的设计是「技能优先、插件可选」：
 - 不装插件，技能也能跑。
-- 装插件后，获得角色注入、状态工具、证据采集、关键词路由和 CLI 辅助能力。
+- 装插件后，获得角色注入、状态工具、证据采集、关键词路由、CLI 辅助能力，以及严格反偷懒/证据门禁 hooks。
 
 [快速开始](#快速开始) • [工作流地图](#工作流地图) • [能力特性](#能力特性) • [文档](#文档)
 
@@ -45,6 +45,19 @@ ln -snf "$PWD/plugins/omh/skills" ~/.hermes/skills/omh
 ```
 
 然后重启 Hermes，让 hooks 和 tools 生效。
+
+如果你之前用了独立 `omc-enforcer`，建议迁移到 OMH 内置强门禁：
+
+```bash
+hermes plugins disable omc-enforcer
+hermes plugins enable omh
+```
+
+如果机器上有会强制回写插件配置的 `omc-guardian.timer`，需要先停用：
+
+```bash
+systemctl --user disable --now omc-guardian.timer
+```
 
 ### 第三步：验证并开始使用
 
@@ -165,8 +178,15 @@ omh skill list
 - `omh_state`：状态、status snapshot、锁、取消信号、角色加载
 - `omh_gather_evidence`：白名单验证命令采集
 - `pre_llm_call`：`[omh-role:NAME]` 角色注入、active mode 提醒和 OMH 关键词路由
-- `pre_tool_call`：角色标记预校验
-- `on_session_end`：中断状态记录
+- `pre_tool_call`：角色标记预校验 + 危险命令阻断
+- `post_llm_call`：反偷懒/反伪完成门禁 + Ralph 关闭评分
+- `post_tool_call`：真实执行证据账本记录
+- `on_session_start` + `on_session_end`/`on_session_finalize`/`on_session_reset`：工作流生命周期状态维护
+- 兼容性 outbound guard hook `pre_gateway_send`（运行时支持时生效）
+
+严格门禁相关环境变量：
+- `OMH_ENFORCER_ENABLED`（默认 `1`）- 设为 `0` 可关闭严格门禁层
+- `OMH_ENFORCER_STATE_FILE` - 覆盖状态账本路径（默认 `~/.hermes/state/omh-enforcer/workflow-state.json`）
 
 详见：[`docs/plugin.md`](docs/plugin.md)
 
