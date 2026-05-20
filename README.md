@@ -1,5 +1,7 @@
 # Oh My Hermes (OMH)
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Multi-agent orchestration skills for [Hermes Agent](https://github.com/NousResearch/hermes-agent),
 inspired by [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode)
 and rebuilt natively for Hermes primitives.
