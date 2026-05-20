@@ -111,6 +111,18 @@ def test_on_session_end_marks_interrupted():
     assert "_interrupted_at" in result["data"]
 
 
+def test_on_session_end_marks_interrupted_instance():
+    state_write("ralph", {"active": True, "phase": "execute"}, instance_id="plan-a")
+
+    from plugins.omh import omh_state as mod
+    mod._list_cache["expires_at"] = 0
+
+    on_session_end()
+
+    result = state_read("ralph", instance_id="plan-a")
+    assert "_interrupted_at" in result["data"]
+
+
 def test_on_session_end_ignores_inactive_modes():
     state_write("ralph", {"active": False, "phase": "complete"})
 

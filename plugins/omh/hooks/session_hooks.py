@@ -31,18 +31,19 @@ def on_session_end(**kwargs) -> None:
 
     for m in modes:
         mode_name = m["mode"]
+        instance_id = m.get("instance_id")
         try:
-            result = state_read(mode_name)
+            result = state_read(mode_name, instance_id=instance_id)
             if not result.get("exists"):
                 continue
             data = result["data"]
             if not data.get("active"):
                 continue
             data["_interrupted_at"] = interrupted_at
-            state_write(mode_name, data)
-            saved.append(mode_name)
+            state_write(mode_name, data, instance_id=instance_id)
+            saved.append(mode_name if instance_id is None else f"{mode_name}/{instance_id}")
         except Exception as e:
-            logger.warning("on_session_end: failed to save %s: %s", mode_name, e)
+            logger.warning("on_session_end: failed to save %s/%s: %s", mode_name, instance_id, e)
 
     if saved:
         logger.info("OMH: saved interruption state for modes: %s", saved)

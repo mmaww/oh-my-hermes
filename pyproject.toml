@@ -7,6 +7,29 @@ dependencies = [
     "pyyaml",
 ]
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["plugins*"]
+
+[tool.setuptools.package-data]
+"plugins.omh" = [
+    "config.yaml",
+    "plugin.yaml",
+    "references/*.md",
+    "templates/*",
+    "skills/*/SKILL.md",
+    "skills/*/GAPS.md",
+    "skills/*/references/*",
+    "skills/*/templates/*",
+    "skills/*/scripts/*",
+]
+
+[project.scripts]
+omh = "plugins.omh.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7",

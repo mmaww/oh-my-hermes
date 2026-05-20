@@ -7,6 +7,7 @@ Actions:
                 — singleton or per-instance (pass instance_id)
   list         | all active state files (singleton + per-instance)
   list_instances | enumerate all instances of a single mode
+  status       | consolidated state + lock snapshot
   lock         | acquire advisory lock (mode + lock_key)
   unlock       | release advisory lock
   lock_check   | inspect a lock without modifying
@@ -28,6 +29,7 @@ from ..omh_state import (
     state_lock_check,
     state_lock_release,
     state_read,
+    state_status,
     state_write,
 )
 
@@ -41,8 +43,8 @@ OMH_STATE_SCHEMA = {
         "multiple plans). Use `lock`/`unlock` advisory locks for state-mutating "
         "modes (ralph/autopilot) to prevent two sessions from racing on the "
         "same plan. Actions: init | read | write | clear | check | list | "
-        "list_instances | cancel | cancel_check | lock | unlock | lock_check | "
-        "load_role."
+        "list_instances | status | cancel | cancel_check | lock | unlock | "
+        "lock_check | load_role."
     ),
     "parameters": {
         "type": "object",
@@ -52,6 +54,7 @@ OMH_STATE_SCHEMA = {
                 "enum": [
                     "init", "read", "write", "clear", "check",
                     "list", "list_instances",
+                    "status",
                     "cancel", "cancel_check",
                     "lock", "unlock", "lock_check",
                     "load_role",
@@ -63,7 +66,7 @@ OMH_STATE_SCHEMA = {
                 "description": (
                     "Mode name: ralph, autopilot, ralplan, deep-interview, "
                     "deep-research, etc. Required for everything except 'list', "
-                    "'init', and 'load_role'."
+                    "'status', 'init', and 'load_role'."
                 ),
             },
             "instance_id": {
@@ -116,6 +119,18 @@ OMH_STATE_SCHEMA = {
                 "type": "boolean",
                 "description": "action=unlock only: bypass session_id check.",
             },
+            "include_inactive": {
+                "type": "boolean",
+                "description": (
+                    "action=status only: include inactive state files in the response."
+                ),
+            },
+            "include_locks": {
+                "type": "boolean",
+                "description": (
+                    "action=status only: include advisory lock status in the response."
+                ),
+            },
             "role": {
                 "type": "string",
                 "description": (
@@ -136,6 +151,12 @@ def omh_state_handler(args: dict, **kwargs) -> str:
 
     if action == "list":
         return json.dumps(state_list_active())
+
+    if action == "status":
+        return json.dumps(state_status(
+            include_inactive=bool(args.get("include_inactive", False)),
+            include_locks=bool(args.get("include_locks", True)),
+        ))
 
     if action == "init":
         return json.dumps(state_init())

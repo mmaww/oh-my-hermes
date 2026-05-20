@@ -11,7 +11,7 @@ inspired by [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) 
 
 OMH is skill-first and plugin-optional:
 - Skills work standalone.
-- The optional plugin adds role injection, state tools, and evidence tooling.
+- The optional plugin adds role injection, state tools, evidence tooling, keyword routing, and CLI helpers.
 
 [Quick Start](#quick-start) • [Workflow Map](#workflow-map) • [Features](#features) • [Documentation](#documentation)
 
@@ -28,6 +28,16 @@ hermes skills install omh-deep-research omh-deep-interview omh-ralplan omh-ralpl
 
 ### Step 2: Install the optional plugin (recommended)
 
+If you are running from this checkout, the easiest path is:
+
+```bash
+pip install -e .
+omh setup
+omh doctor
+```
+
+Manual symlink install is still supported:
+
 ```bash
 mkdir -p ~/.hermes/plugins ~/.hermes/skills
 ln -snf "$PWD/plugins/omh" ~/.hermes/plugins/omh
@@ -40,6 +50,7 @@ Then restart Hermes so hooks/tools are reloaded.
 
 ```bash
 hermes skills list | rg '^omh-'
+omh status
 ```
 
 Examples:
@@ -66,6 +77,9 @@ Core skills and their jobs:
 | `omh-ralph` | Evidence-driven execution loop with verify/fix progression |
 | `omh-triage` | Backlog triage with Maintainer + Skeptic role pressure |
 | `omh-autopilot` | End-to-end composition across interview/plan/execute/QA/validation |
+| `omh-ultrawork` | Parallel burst execution for independent tasks |
+| `omh-team` | Hermes delegate batches and tmux provider workers |
+| `omh-ccg` | Codex + Gemini advisor pass with Hermes synthesis |
 
 Driver/dispatcher skills:
 
@@ -75,6 +89,16 @@ Driver/dispatcher skills:
 | `omh-ralph-driver` | You are orchestrating ralph tasks/batches and verifier gating |
 | `omh-triage-driver` | You are orchestrating backlog grooming rounds |
 | `omh-ralph-task` | You are the executor for one bounded ralph task envelope |
+
+Utility skills:
+
+| Utility Skill | Job |
+| --- | --- |
+| `omh-setup` | Install/verify the plugin, bundled skills, and project `.omh/` state |
+| `omh-hud` | Show active modes, phases, stale state, and locks |
+| `omh-ask` | Run local Claude/Codex/Gemini/Hermes CLI advisors and save artifacts |
+| `omh-cancel` | Request cancellation for active OMH modes |
+| `omh-skill` | List, add, search, and remove custom project/user skills |
 
 ## Not Sure Where to Start?
 
@@ -103,13 +127,36 @@ Driver/dispatcher skills:
 | `omh-ralph` | Persistent execute+verify cycle | Reliable delivery with completion evidence |
 | `omh-triage` | Consensus issue/backlog grooming | Pruning stale items and recasting live issues |
 | `omh-autopilot` | Composed full pipeline | End-to-end implementation from idea |
+| `omh-ultrawork` | Parallel non-team burst | Independent fixes/refactors with disjoint file scopes |
+| `omh-team` / `omh team` | Native delegate batches or tmux CLI workers | Multi-provider review/execution lanes |
+| `omh-ccg` | Codex + Gemini advisor synthesis | Mixed backend/UI or high-risk design review |
+
+### CLI Utilities
+
+```bash
+omh setup
+omh doctor
+omh status
+omh hud
+omh ask codex --prompt "review this migration"
+omh team 2:codex "review auth module"
+omh cancel
+omh skill list
+```
+
+Artifacts and runtime state are written under `.omh/`:
+
+- `.omh/state/` — active mode state and advisory locks
+- `.omh/artifacts/ask/` — provider advisor transcripts
+- `.omh/team/` — tmux worker logs
+- `.omh/skills/` — project-scoped reusable skills
 
 ### Plugin Infrastructure (optional)
 
 The plugin at `plugins/omh/` provides:
-- `omh_state` tool for workflow state, locks, cancel signals, and role loading
+- `omh_state` tool for workflow state, status snapshots, locks, cancel signals, and role loading
 - `omh_gather_evidence` tool for allowlisted verification command capture
-- `pre_llm_call` hook for `[omh-role:NAME]` role injection
+- `pre_llm_call` hook for `[omh-role:NAME]` role injection, active-mode reminders, and OMH keyword routing
 - `pre_tool_call` hook for role marker validation
 - `on_session_end` hook for interruption bookkeeping
 

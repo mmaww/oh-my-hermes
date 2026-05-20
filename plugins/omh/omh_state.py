@@ -360,6 +360,69 @@ def state_list_instances(mode: str) -> dict:
     return {"mode": mode, "instances": out}
 
 
+def state_status(include_inactive: bool = False, include_locks: bool = True) -> dict:
+    """Return a consolidated OMH runtime status snapshot.
+
+    Args:
+      include_inactive: include non-active state files in `states`.
+      include_locks: include lockfile status in `locks`.
+    """
+    state_dir = _state_dir()
+    states = []
+
+    try:
+        for p in sorted(state_dir.glob("*.json")):
+            stem = p.stem
+            mode = None
+            instance_id = None
+            if "--" in stem:
+                mode, _, instance_id = stem.partition("--")
+                if not _MODE_RE.match(mode) or not instance_id:
+                    continue
+                check = state_check(mode, instance_id)
+            elif stem.endswith("-state"):
+                mode = stem[:-len("-state")]
+                if not _MODE_RE.match(mode):
+                    continue
+                check = state_check(mode)
+            else:
+                continue
+
+            row = {"mode": mode, **check}
+            if instance_id is not None:
+                row["instance_id"] = instance_id
+            if include_inactive or row.get("active"):
+                states.append(row)
+    except Exception as e:
+        logger.warning("state_status: failed scanning state files: %s", e)
+
+    result = {
+        "state_dir": str(state_dir),
+        "generated_at": _now_iso(),
+        "active_count": sum(1 for s in states if s.get("active")),
+        "states": states,
+    }
+
+    if include_locks:
+        locks = []
+        try:
+            for p in sorted(state_dir.glob("*.lock")):
+                stem = p.stem
+                if "--" not in stem:
+                    continue
+                mode, _, lock_key = stem.partition("--")
+                if not _MODE_RE.match(mode) or not lock_key:
+                    continue
+                check = state_lock_check(mode, lock_key)
+                check.update({"mode": mode, "lock_key": lock_key})
+                locks.append(check)
+        except Exception as e:
+            logger.warning("state_status: failed scanning lock files: %s", e)
+        result["locks"] = locks
+
+    return result
+
+
 def state_cancel(mode: str, reason: str = "user request", requested_by: str = "user",
                  instance_id: str | None = None) -> dict:
     """Set cancel_requested=True in the mode's state file."""

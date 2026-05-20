@@ -11,6 +11,11 @@ roles:
   code-reviewer:     {category: review}
   test-engineer:     {category: testing}
   debugger:          {category: analysis}
+  researcher:        {category: research}
+  research-synthesist: {category: research}
+  research-verifier: {category: review}
+  triage-maintainer: {category: triage}
+  triage-skeptic:    {category: triage}
 
 # Debug mode: print role injection and validation events to stdout.
 # Enable via config (debug: true) or environment variable (OMH_DEBUG=1).

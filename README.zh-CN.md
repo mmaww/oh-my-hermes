@@ -11,7 +11,7 @@
 
 OMH 的设计是「技能优先、插件可选」：
 - 不装插件，技能也能跑。
-- 装插件后，获得角色注入、状态工具和证据采集能力。
+- 装插件后，获得角色注入、状态工具、证据采集、关键词路由和 CLI 辅助能力。
 
 [快速开始](#快速开始) • [工作流地图](#工作流地图) • [能力特性](#能力特性) • [文档](#文档)
 
@@ -28,6 +28,16 @@ hermes skills install omh-deep-research omh-deep-interview omh-ralplan omh-ralpl
 
 ### 第二步：安装可选插件（推荐）
 
+如果从当前 checkout 运行，推荐：
+
+```bash
+pip install -e .
+omh setup
+omh doctor
+```
+
+也可以手动 symlink：
+
 ```bash
 mkdir -p ~/.hermes/plugins ~/.hermes/skills
 ln -snf "$PWD/plugins/omh" ~/.hermes/plugins/omh
@@ -40,6 +50,7 @@ ln -snf "$PWD/plugins/omh/skills" ~/.hermes/skills/omh
 
 ```bash
 hermes skills list | rg '^omh-'
+omh status
 ```
 
 示例：
@@ -66,6 +77,9 @@ omh-deep-research -> omh-deep-interview -> omh-ralplan -> omh-ralph
 | `omh-ralph` | 证据驱动执行循环（执行-验证-修复） |
 | `omh-triage` | Maintainer + Skeptic 共识分诊 backlog |
 | `omh-autopilot` | 访谈/规划/执行/QA/验证的一体化流水线 |
+| `omh-ultrawork` | 面向独立任务的并行 burst 执行 |
+| `omh-team` | Hermes delegate batch 与 tmux provider workers |
+| `omh-ccg` | Codex + Gemini advisor，再由 Hermes 综合 |
 
 调度类技能：
 
@@ -75,6 +89,16 @@ omh-deep-research -> omh-deep-interview -> omh-ralplan -> omh-ralph
 | `omh-ralph-driver` | 你在主持 ralph 批处理与 verifier 门禁 |
 | `omh-triage-driver` | 你在主持 issue/backlog 治理轮次 |
 | `omh-ralph-task` | 你是单个 ralph 任务执行者，需遵守封套纪律 |
+
+工具类技能：
+
+| 工具技能 | 作用 |
+| --- | --- |
+| `omh-setup` | 安装/验证插件、bundled skills 和项目 `.omh/` 状态 |
+| `omh-hud` | 查看 active modes、phase、stale state 和 locks |
+| `omh-ask` | 调用本地 Claude/Codex/Gemini/Hermes CLI，并保存 artifact |
+| `omh-cancel` | 给 active OMH modes 发取消信号 |
+| `omh-skill` | 管理 project/user scope 的自定义技能 |
 
 ## 不知道先用哪个？
 
@@ -103,13 +127,36 @@ omh-deep-research -> omh-deep-interview -> omh-ralplan -> omh-ralph
 | `omh-ralph` | 持续执行+验证循环 | 要求高可靠交付与证据闭环 |
 | `omh-triage` | 共识式 backlog 治理 | 清理陈旧 issue、重铸有效需求 |
 | `omh-autopilot` | 组合全流程 | 从想法到交付的一站式推进 |
+| `omh-ultrawork` | 非 Team 并行 burst | 文件范围不重叠的独立修复/重构 |
+| `omh-team` / `omh team` | 原生 delegate batch 或 tmux CLI workers | 多 provider review / execution lanes |
+| `omh-ccg` | Codex + Gemini advisor 综合 | backend/UI 混合任务或高风险设计评审 |
+
+### CLI 工具
+
+```bash
+omh setup
+omh doctor
+omh status
+omh hud
+omh ask codex --prompt "review this migration"
+omh team 2:codex "review auth module"
+omh cancel
+omh skill list
+```
+
+运行材料写入 `.omh/`：
+
+- `.omh/state/`：active mode state 和 advisory locks
+- `.omh/artifacts/ask/`：provider advisor 记录
+- `.omh/team/`：tmux worker 日志
+- `.omh/skills/`：project scope 可复用技能
 
 ### 插件能力（可选）
 
 `plugins/omh/` 提供：
-- `omh_state`：状态、锁、取消信号、角色加载
+- `omh_state`：状态、status snapshot、锁、取消信号、角色加载
 - `omh_gather_evidence`：白名单验证命令采集
-- `pre_llm_call`：`[omh-role:NAME]` 角色注入
+- `pre_llm_call`：`[omh-role:NAME]` 角色注入、active mode 提醒和 OMH 关键词路由
 - `pre_tool_call`：角色标记预校验
 - `on_session_end`：中断状态记录
 

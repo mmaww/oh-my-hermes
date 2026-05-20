@@ -54,5 +54,5 @@ already addresses; others remain open):
 | **Stop prevention** | `persistent-mode.cjs` — 1144 lines that mechanically block Claude Code from exiting | Hermes has no `Stop` lifecycle hook. Skills can instruct but can't enforce. | PR: `pre_session_end` veto hook. Our workaround: state files + re-invocation. |
 | **LSP integration** | 12 IDE-grade tools (hover, references, rename, diagnostics) | Not a skill-level feature — requires tool registration or MCP server. | PR or MCP server package. We use terminal-based tools (ripgrep, linters). |
 | **ast-grep** | Structural code search/replace using AST matching | Same — needs tool registration. | Terminal fallback: `ast-grep` CLI works if installed. |
-| **HUD / observability** | Real-time statusline with token tracking, agent activity | No display API in Hermes skills. | Plugin using `post_tool_call` hook. We use `todo` + progress logs. |
+| **Live statusline with token tracking** | Real-time statusline with token/cost and agent activity | No display API in Hermes skills. | Partial shipped: `omh status`, `omh hud`, and `omh_state(action="status")` expose mode/phase/lock status. Token/cost tracking still needs runtime hook support. |
 | **Rate limit auto-resume** | `omc wait` daemon monitors for resets | No equivalent daemon mechanism. | Hermes has credential pool rotation, which handles most cases. |

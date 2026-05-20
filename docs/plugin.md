@@ -62,12 +62,37 @@ to see injection events:
 
 | Component | What It Does | Status |
 |-----------|-------------|--------|
-| `omh_state` tool (8 actions) | Atomic read/write/check/cancel for `.omh/` state files; `load_role` action for explicit role loading | Shipped |
+| `omh_state` tool | Atomic read/write/check/list/status/cancel/lock for `.omh/` state files; `load_role` action for explicit role loading | Shipped |
 | `omh_gather_evidence` tool | Runs build/test/lint commands from an allowlist, captures + truncates output | Shipped |
-| `pre_llm_call` hook | Detects `[omh-role:NAME]` in subagent `user_message`; injects matching role prompt into system context | Shipped |
+| `pre_llm_call` hook | Detects `[omh-role:NAME]` in subagent `user_message`; injects matching role prompt, active-mode reminders, and first-turn keyword routing | Shipped |
 | `pre_tool_call` hook | Validates `[omh-role:NAME]` markers in `delegate_task` goals before subagents start; warns on unknown roles | Shipped |
 | `on_session_end` hook | Writes `_interrupted_at` to active mode state on unexpected exit | Shipped |
 | Model tier routing | Maps roles to Haiku/Sonnet/Opus via config | Roadmap |
+
+## CLI Surface
+
+Installing the project exposes `omh`:
+
+```bash
+pip install -e .
+omh setup
+omh doctor
+omh status
+omh hud
+omh ask codex --prompt "review this migration"
+omh team 2:codex "review auth"
+omh cancel
+omh skill list
+```
+
+The CLI is a thin wrapper around the same plugin assets and `.omh/` state
+conventions used by skills:
+
+- `omh setup` links/copies the plugin and bundled skills into Hermes.
+- `omh status` / `omh hud` call the state engine's consolidated status snapshot.
+- `omh ask` saves provider transcripts under `.omh/artifacts/ask/`.
+- `omh team` launches tmux panes and writes worker logs under `.omh/team/`.
+- `omh skill` manages project/user scope skill directories.
 
 The key architectural insight for role injection: `delegate_task` passes
 `goal` as `user_message` to the subagent's `run_conversation()`. The

@@ -1,7 +1,9 @@
 # Honest Gaps
 
-OMH v1.0 replicates the core execution pipeline (~85%) but not the full OMC
-feature surface (~60% overall). This document tracks what's missing.
+OMH now covers the core OMC README surface in Hermes-native form: setup/doctor,
+status/HUD, ask artifacts, tmux-backed team workers, keyword routing, custom
+skill management, and the main orchestration modes. This document tracks what
+is still intentionally incomplete or limited by Hermes runtime constraints.
 
 For gaps that require Hermes-level changes (LSP, stop prevention, HUD), see
 [`hermes-constraints.md`](hermes-constraints.md).
@@ -15,5 +17,17 @@ For gaps that require Hermes-level changes (LSP, stop prevention, HUD), see
 | **Model tier routing** | Auto-routes Haiku/Sonnet/Opus by task complexity. We use one model for all. | Low-Medium | **Native via `delegation.model` / `delegation.provider` config** — see [`research/hermes-multiagent.md`](research/hermes-multiagent.md) §5. OMH should ship recommended config presets (cheap-tier for verifier/deslop leaves) rather than build its own router. Per-task routing within a single batch is not yet supported by the public schema. |
 | **Ontology extraction** | Tracks entities across interview rounds with stability ratios | Medium-High | Deep-interview v1.1 |
 | **Brownfield explore-first** | Scans codebase before asking the user | Medium | Deep-interview v1.1 |
-| **Team mode** | Native agent teams with direct inter-agent messaging | Low | Fundamental architecture difference — Hermes subagents are isolated |
-| **Multi-model orchestration** | Claude + Codex + Gemini workers via tmux | Medium | **Natively supported via per-task `acp_command` in `delegate_task`** — see [`research/hermes-multiagent.md`](research/hermes-multiagent.md) §6. A ralplan variant where Planner=Claude Code, Architect=Codex, Critic=Hermes-native is a few-line change. Candidate skill: `omh-cross-model-debate`. **Validation spike required first** — ACP-as-worker behavior under the `omh_delegate` contract-injection wrapper is unverified (2026-04-22). |
+
+## Shipped Since This Gap List Was First Written
+
+| Former gap | Current OMH surface |
+| --- | --- |
+| Setup / doctor | `omh setup`, `omh doctor`, `omh-setup` |
+| HUD / observability | `omh status`, `omh hud`, `omh_state(action="status")`, `omh-hud` |
+| Provider advisor | `omh ask`, `omh-ask`, artifacts under `.omh/artifacts/ask/` |
+| tmux multi-provider workers | `omh team`, `omh-team`, logs under `.omh/team/` |
+| CCG advisor flow | `omh-ccg` |
+| Ultrawork burst mode | `omh-ultrawork` |
+| Cancellation utility | `omh cancel`, `omh-cancel` |
+| Custom skill management | `omh skill`, `omh-skill`, project/user skill scopes |
+| Magic keyword routing | `pre_llm_call` first-turn keyword routing context |

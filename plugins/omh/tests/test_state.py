@@ -16,6 +16,7 @@ from plugins.omh.omh_state import (
     state_clear,
     state_list_active,
     state_read,
+    state_status,
     state_write,
 )
 from plugins.omh.tools.state_tool import omh_state_handler
@@ -412,6 +413,25 @@ def test_handler_list():
     result = json.loads(omh_state_handler({"action": "list"}))
     assert "modes" in result
     assert any(m["mode"] == "ralph" for m in result["modes"])
+
+
+def test_status_lists_active_states_and_locks():
+    state_write("ralph", {"active": True, "phase": "execute"}, instance_id="plan-a")
+    state_write("autopilot", {"active": False, "phase": "complete"})
+    state_lock_acquire("ralph", "plan-a", session_id="sess")
+
+    result = state_status(include_inactive=False, include_locks=True)
+    keys = {(s["mode"], s.get("instance_id")) for s in result["states"]}
+    assert ("ralph", "plan-a") in keys
+    assert ("autopilot", None) not in keys
+    assert result["active_count"] == 1
+    assert any(lock["mode"] == "ralph" and lock["lock_key"] == "plan-a" for lock in result["locks"])
+
+
+def test_handler_status_includes_inactive_when_requested():
+    state_write("ralph", {"active": False, "phase": "complete"})
+    result = json.loads(omh_state_handler({"action": "status", "include_inactive": True}))
+    assert any(s["mode"] == "ralph" and s["active"] is False for s in result["states"])
 
 
 def test_handler_cancel():
