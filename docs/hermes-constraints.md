@@ -55,4 +55,4 @@ already addresses; others remain open):
 | **LSP integration** | 12 IDE-grade tools (hover, references, rename, diagnostics) | Not a skill-level feature — requires tool registration or MCP server. | PR or MCP server package. We use terminal-based tools (ripgrep, linters). |
 | **ast-grep** | Structural code search/replace using AST matching | Same — needs tool registration. | Terminal fallback: `ast-grep` CLI works if installed. |
 | **Live statusline with token tracking** | Real-time statusline with token/cost and agent activity | No display API in Hermes skills. | Partial shipped: `omh status`, `omh hud`, and `omh_state(action="status")` expose mode/phase/lock status. Token/cost tracking still needs runtime hook support. |
-| **Rate limit auto-resume** | `omc wait` daemon monitors for resets | No equivalent daemon mechanism. | Hermes has credential pool rotation, which handles most cases. |
+| **Rate limit auto-resume** | `omc wait` daemon monitors for resets | Hermes 无法读取 Claude Code 内部配额事件。 | OMH 提供 `omh wait`（start/stop/status + 到点 resume-cmd）；属于外部计时/恢复，不依赖内部事件流。 |

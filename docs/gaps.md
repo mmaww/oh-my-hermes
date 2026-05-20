@@ -30,4 +30,8 @@ For gaps that require Hermes-level changes (LSP, stop prevention, HUD), see
 | Ultrawork burst mode | `omh-ultrawork` |
 | Cancellation utility | `omh cancel`, `omh-cancel` |
 | Custom skill management | `omh skill`, `omh-skill`, project/user skill scopes |
+| Custom skill auto-inject | `pre_llm_call` injects matched project/user custom skills by trigger |
 | Magic keyword routing | `pre_llm_call` first-turn keyword routing context |
+| Rate-limit wait helper | `omh wait`, `omh-wait` |
+| Stop callback config surface | `omh config-stop-callback`, `omh-configure-notifications` |
+| Pipeline / Ultrapilot compatibility | `omh-pipeline`, `omh-ultrapilot` |

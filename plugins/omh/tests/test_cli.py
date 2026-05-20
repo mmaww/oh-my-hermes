@@ -70,6 +70,41 @@ def test_team_dry_run_builds_worker_plan(capsys):
     assert len(payload["commands"]) == 2
 
 
+def test_wait_start_dry_run(capsys):
+    rc = cli.main(["wait", "--start", "--seconds", "30", "--dry-run", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "running"
+    assert payload["active"] is True
+    assert payload["command"][2] == "_wait-daemon"
+
+
+def test_config_stop_callback_roundtrip(capsys):
+    rc = cli.main([
+        "config-stop-callback",
+        "telegram",
+        "--enable",
+        "--token",
+        "abc123xyz",
+        "--chat",
+        "chat-1",
+        "--tag-list",
+        "@alice,bob",
+        "--add-tag",
+        "charlie",
+        "--remove-tag",
+        "bob",
+        "--json",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["provider"] == "telegram"
+    assert payload["config"]["enabled"] is True
+    assert payload["config"]["chat"] == "chat-1"
+    assert payload["config"]["tags"] == ["@alice", "charlie"]
+    assert "*" in payload["config"]["token"]
+
+
 def test_cancel_all_active_modes(capsys):
     state_write("ralph", {"active": True})
     rc = cli.main(["cancel", "--json"])
@@ -89,3 +124,13 @@ def test_skill_add_and_search(capsys):
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["matches"][0]["name"] == "fix-proxy"
+
+
+def test_skill_edit_print_path(capsys):
+    rc = cli.main(["skill", "add", "fix-db", "--description", "Fix db"])
+    assert rc == 0
+    _ = capsys.readouterr()
+    rc = cli.main(["skill", "edit", "fix-db", "--scope", "project", "--print-path"])
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out.endswith("/.omh/skills/fix-db/SKILL.md")

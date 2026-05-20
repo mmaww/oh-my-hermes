@@ -77,7 +77,9 @@ omh-deep-research -> omh-deep-interview -> omh-ralplan -> omh-ralph
 | `omh-ralph` | 证据驱动执行循环（执行-验证-修复） |
 | `omh-triage` | Maintainer + Skeptic 共识分诊 backlog |
 | `omh-autopilot` | 访谈/规划/执行/QA/验证的一体化流水线 |
+| `omh-pipeline` | 适合强顺序依赖任务的阶段化流水线 |
 | `omh-ultrawork` | 面向独立任务的并行 burst 执行 |
+| `omh-ultrapilot` | legacy 兼容入口，语义路由到 autopilot |
 | `omh-team` | Hermes delegate batch 与 tmux provider workers |
 | `omh-ccg` | Codex + Gemini advisor，再由 Hermes 综合 |
 
@@ -97,8 +99,10 @@ omh-deep-research -> omh-deep-interview -> omh-ralplan -> omh-ralph
 | `omh-setup` | 安装/验证插件、bundled skills 和项目 `.omh/` 状态 |
 | `omh-hud` | 查看 active modes、phase、stale state 和 locks |
 | `omh-ask` | 调用本地 Claude/Codex/Gemini/Hermes CLI，并保存 artifact |
+| `omh-wait` | 限流冷却窗口的 start/stop/status 辅助 |
+| `omh-configure-notifications` | 配置 stop callback 的渠道标签与路由元信息 |
 | `omh-cancel` | 给 active OMH modes 发取消信号 |
-| `omh-skill` | 管理 project/user scope 的自定义技能 |
+| `omh-skill` | 管理 project/user scope 的自定义技能（含 edit） |
 
 ## 不知道先用哪个？
 
@@ -127,7 +131,9 @@ omh-deep-research -> omh-deep-interview -> omh-ralplan -> omh-ralph
 | `omh-ralph` | 持续执行+验证循环 | 要求高可靠交付与证据闭环 |
 | `omh-triage` | 共识式 backlog 治理 | 清理陈旧 issue、重铸有效需求 |
 | `omh-autopilot` | 组合全流程 | 从想法到交付的一站式推进 |
+| `omh-pipeline` | 强顺序阶段流水线 | 多步骤转换且阶段依赖严格 |
 | `omh-ultrawork` | 非 Team 并行 burst | 文件范围不重叠的独立修复/重构 |
+| `omh-ultrapilot` | autopilot 的 legacy 兼容别名 | 兼容旧提示词与旧习惯 |
 | `omh-team` / `omh team` | 原生 delegate batch 或 tmux CLI workers | 多 provider review / execution lanes |
 | `omh-ccg` | Codex + Gemini advisor 综合 | backend/UI 混合任务或高风险设计评审 |
 
@@ -140,6 +146,8 @@ omh status
 omh hud
 omh ask codex --prompt "review this migration"
 omh team 2:codex "review auth module"
+omh wait --start --minutes 15 --resume-cmd "echo resume now"
+omh config-stop-callback telegram --enable --token <token> --chat <chat> --tag-list "@alice,bob"
 omh cancel
 omh skill list
 ```

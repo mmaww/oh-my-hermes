@@ -219,6 +219,28 @@ def test_pre_llm_call_no_user_message_no_crash():
     assert result is None
 
 
+def test_pre_llm_call_injects_custom_skill_context(tmp_path):
+    skill_dir = tmp_path / ".omh" / "skills" / "proxy-fix"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(
+        """---
+name: proxy-fix
+triggers: ["proxy crash", "aiohttp"]
+---
+
+Catch ClientDisconnectedError and return 499.
+""",
+        encoding="utf-8",
+    )
+
+    result = pre_llm_call(is_first_turn=True, user_message="Please fix this proxy crash")
+    assert result is not None
+    ctx = result["context"]
+    assert "custom skill auto-inject" in ctx
+    assert "proxy-fix" in ctx
+    assert "ClientDisconnectedError" in ctx
+
+
 # ---------------------------------------------------------------------------
 # pre_tool_call — delegate_task role validation
 # ---------------------------------------------------------------------------

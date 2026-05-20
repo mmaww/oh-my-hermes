@@ -23,8 +23,14 @@ class KeywordRoute:
 _ROUTES: tuple[tuple[re.Pattern[str], KeywordRoute], ...] = (
     (re.compile(r"(?i)(^|\b)(cancelomc|stopomc|cancel\s+omh|stop\s+omh|取消\s*omh)(\b|$)"),
      KeywordRoute("cancel", "omh cancel", "stop active OMH modes", 100)),
+    (re.compile(r"(?i)(^|\b)(wait|rate\s*limit|冷却|限流等待)(\b|:)"),
+     KeywordRoute("wait", "omh wait", "rate-limit wait helper", 95)),
     (re.compile(r"(?i)(^|\b)(autopilot|自动驾驶|全自动)(\b|:)"),
      KeywordRoute("autopilot", "omh-autopilot", "end-to-end autonomous execution", 90)),
+    (re.compile(r"(?i)(^|\b)(ultrapilot)(\b|:)"),
+     KeywordRoute("ultrapilot", "omh-ultrapilot", "legacy autopilot compatibility alias", 88)),
+    (re.compile(r"(?i)(^|\b)(pipeline|顺序流水线|阶段流水线)(\b|:)"),
+     KeywordRoute("pipeline", "omh-pipeline", "sequential staged execution", 87)),
     (re.compile(r"(?i)(^|\b)(ralph|persistent\s+mode|持续执行)(\b|:)"),
      KeywordRoute("ralph", "omh-ralph", "persistent execute/verify loop", 85)),
     (re.compile(r"(?i)(^|\b)(ultrawork|ulw|parallel\s+burst|最大并行)(\b|:)"),
@@ -41,6 +47,8 @@ _ROUTES: tuple[tuple[re.Pattern[str], KeywordRoute], ...] = (
      KeywordRoute("ccg", "omh-ccg", "Codex + Gemini advisor synthesis", 55)),
     (re.compile(r"(?i)(^|\b)(hud|statusline|状态栏|运行状态)(\b|$)"),
      KeywordRoute("hud", "omh-hud / omh hud", "runtime visibility", 40)),
+    (re.compile(r"(?i)(^|\b)(configure[-\s]?notifications|通知配置|stop\s+callback)(\b|$)"),
+     KeywordRoute("config-stop-callback", "omh config-stop-callback", "notification callback settings", 35)),
 )
 
 

@@ -77,7 +77,9 @@ Core skills and their jobs:
 | `omh-ralph` | Evidence-driven execution loop with verify/fix progression |
 | `omh-triage` | Backlog triage with Maintainer + Skeptic role pressure |
 | `omh-autopilot` | End-to-end composition across interview/plan/execute/QA/validation |
+| `omh-pipeline` | Sequential staged execution when ordering is strict |
 | `omh-ultrawork` | Parallel burst execution for independent tasks |
+| `omh-ultrapilot` | Legacy compatibility alias that routes to autopilot semantics |
 | `omh-team` | Hermes delegate batches and tmux provider workers |
 | `omh-ccg` | Codex + Gemini advisor pass with Hermes synthesis |
 
@@ -97,8 +99,10 @@ Utility skills:
 | `omh-setup` | Install/verify the plugin, bundled skills, and project `.omh/` state |
 | `omh-hud` | Show active modes, phases, stale state, and locks |
 | `omh-ask` | Run local Claude/Codex/Gemini/Hermes CLI advisors and save artifacts |
+| `omh-wait` | Start/stop/status helper for rate-limit cooldown windows |
+| `omh-configure-notifications` | Configure stop-callback provider tags and routing metadata |
 | `omh-cancel` | Request cancellation for active OMH modes |
-| `omh-skill` | List, add, search, and remove custom project/user skills |
+| `omh-skill` | List, add, search, edit, and remove custom project/user skills |
 
 ## Not Sure Where to Start?
 
@@ -127,7 +131,9 @@ Utility skills:
 | `omh-ralph` | Persistent execute+verify cycle | Reliable delivery with completion evidence |
 | `omh-triage` | Consensus issue/backlog grooming | Pruning stale items and recasting live issues |
 | `omh-autopilot` | Composed full pipeline | End-to-end implementation from idea |
+| `omh-pipeline` | Strict sequential pipeline | Multi-step transformations with hard ordering |
 | `omh-ultrawork` | Parallel non-team burst | Independent fixes/refactors with disjoint file scopes |
+| `omh-ultrapilot` | Legacy alias of autopilot | Compatibility with older prompts and habits |
 | `omh-team` / `omh team` | Native delegate batches or tmux CLI workers | Multi-provider review/execution lanes |
 | `omh-ccg` | Codex + Gemini advisor synthesis | Mixed backend/UI or high-risk design review |
 
@@ -140,6 +146,8 @@ omh status
 omh hud
 omh ask codex --prompt "review this migration"
 omh team 2:codex "review auth module"
+omh wait --start --minutes 15 --resume-cmd "echo resume now"
+omh config-stop-callback telegram --enable --token <token> --chat <chat> --tag-list "@alice,bob"
 omh cancel
 omh skill list
 ```

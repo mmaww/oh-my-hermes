@@ -13,6 +13,7 @@ import logging
 from ..omh_roles import debug_print, extract_role_marker, load_role_prompt
 from ..omh_state import state_list_active
 from ..omh_keywords import keyword_routing_context
+from ..omh_skill_injection import custom_skill_context
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,10 @@ def pre_llm_call(**kwargs) -> dict | None:
         if route_context is not None:
             debug_print("pre_llm_call: injecting keyword routing context")
             context_parts.append(route_context)
+        skill_context = custom_skill_context(user_message)
+        if skill_context is not None:
+            debug_print("pre_llm_call: injecting custom skill context")
+            context_parts.append(skill_context)
         role_name = extract_role_marker(user_message)
         if role_name is not None:
             role_prompt = load_role_prompt(role_name)

@@ -9,6 +9,8 @@ README's outer surfaces for Hermes users:
   omh hud        one-line status summary
   omh ask        run a local provider CLI and save an artifact
   omh team       launch tmux-backed provider workers
+  omh wait       run/start/stop a rate-limit wait helper
+  omh config-stop-callback  manage notification callback config
   omh cancel     request cancellation for active OMH modes
   omh skill      manage project/user skill files
 """
@@ -21,10 +23,12 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import textwrap
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -51,6 +55,37 @@ def _slugify(value: str, default: str = "task", max_len: int = 72) -> str:
 
 def _hermes_home() -> Path:
     return Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser().resolve()
+
+
+def _read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            return raw
+    except Exception:
+        pass
+    return {}
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _pid_alive(pid: int | None) -> bool:
+    if not pid or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        return False
 
 
 def _json_or_print(payload: dict, as_json: bool) -> None:
@@ -500,6 +535,274 @@ def cmd_team(args: argparse.Namespace) -> int:
     return 0
 
 
+def _wait_state_path(workdir: Path) -> Path:
+    return workdir / ".omh" / "state" / "wait-daemon.json"
+
+
+def _parse_until(args: argparse.Namespace) -> datetime:
+    if args.until:
+        raw = args.until.strip()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    total_seconds = max(1, int(args.minutes) * 60 + int(args.seconds))
+    return datetime.now(timezone.utc) + timedelta(seconds=total_seconds)
+
+
+def _format_wait_status(payload: dict) -> list[str]:
+    lines = [
+        f"status: {payload.get('status', 'idle')}",
+        f"workdir: {payload.get('workdir', '')}",
+    ]
+    if payload.get("pid"):
+        lines.append(f"pid: {payload.get('pid')} ({'alive' if payload.get('pid_alive') else 'dead'})")
+    if payload.get("until"):
+        lines.append(f"until: {payload['until']}")
+    if payload.get("remaining_seconds") is not None:
+        lines.append(f"remaining_seconds: {payload['remaining_seconds']}")
+    if payload.get("resume_cmd"):
+        lines.append(f"resume_cmd: {payload['resume_cmd']}")
+    if payload.get("completed_at"):
+        lines.append(f"completed_at: {payload['completed_at']}")
+    if payload.get("stopped_at"):
+        lines.append(f"stopped_at: {payload['stopped_at']}")
+    return lines
+
+
+def cmd_wait_daemon(args: argparse.Namespace) -> int:
+    state_path = Path(args.state_file).resolve()
+    workdir = Path(args.workdir).resolve()
+    until_raw = args.until
+    if until_raw.endswith("Z"):
+        until_raw = until_raw[:-1] + "+00:00"
+    until = datetime.fromisoformat(until_raw).astimezone(timezone.utc)
+    poll = max(1, int(args.poll_interval))
+
+    while True:
+        now = datetime.now(timezone.utc)
+        remaining = int((until - now).total_seconds())
+        if remaining <= 0:
+            result = {
+                "status": "completed",
+                "active": False,
+                "pid": os.getpid(),
+                "workdir": str(workdir),
+                "until": until.isoformat(),
+                "completed_at": now.isoformat(),
+                "resume_cmd": args.resume_cmd,
+                "resume_exit_code": None,
+                "resume_stdout": "",
+                "resume_stderr": "",
+            }
+            if args.resume_cmd:
+                try:
+                    proc = subprocess.run(
+                        args.resume_cmd,
+                        cwd=str(workdir),
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=max(1, int(args.resume_timeout)),
+                    )
+                    result["resume_exit_code"] = proc.returncode
+                    result["resume_stdout"] = proc.stdout[-4000:]
+                    result["resume_stderr"] = proc.stderr[-4000:]
+                except subprocess.TimeoutExpired:
+                    result["resume_exit_code"] = 124
+                    result["resume_stderr"] = f"TIMEOUT after {args.resume_timeout}s"
+            _write_json(state_path, result)
+            return 0
+        time.sleep(min(poll, max(1, remaining)))
+
+
+def cmd_wait(args: argparse.Namespace) -> int:
+    workdir = Path(args.workdir or os.getcwd()).resolve()
+    state_path = _wait_state_path(workdir)
+    state = _read_json(state_path)
+    now = datetime.now(timezone.utc)
+
+    if args.stop:
+        pid = int(state.get("pid") or 0)
+        stopped = False
+        if _pid_alive(pid):
+            try:
+                os.kill(pid, signal.SIGTERM)
+                stopped = True
+            except Exception:
+                stopped = False
+        payload = {
+            **state,
+            "status": "stopped",
+            "active": False,
+            "pid_alive": False,
+            "stopped_at": now.isoformat(),
+            "stop_signal_sent": stopped,
+            "workdir": str(workdir),
+        }
+        _write_json(state_path, payload)
+        _json_or_print({**payload, "lines": _format_wait_status(payload)}, args.json)
+        return 0
+
+    if args.start:
+        existing_pid = int(state.get("pid") or 0)
+        if state.get("active") and _pid_alive(existing_pid):
+            payload = {
+                **state,
+                "pid_alive": True,
+                "error": f"wait daemon already active (pid={existing_pid})",
+                "workdir": str(workdir),
+            }
+            _json_or_print({**payload, "lines": _format_wait_status(payload)}, args.json)
+            return 1
+
+        until = _parse_until(args)
+        daemon_cmd = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "_wait-daemon",
+            "--state-file",
+            str(state_path),
+            "--workdir",
+            str(workdir),
+            "--until",
+            until.isoformat(),
+            "--poll-interval",
+            str(args.poll_interval),
+            "--resume-timeout",
+            str(args.resume_timeout),
+        ]
+        if args.resume_cmd:
+            daemon_cmd.extend(["--resume-cmd", args.resume_cmd])
+
+        payload = {
+            "status": "running",
+            "active": True,
+            "workdir": str(workdir),
+            "until": until.isoformat(),
+            "resume_cmd": args.resume_cmd,
+            "started_at": now.isoformat(),
+        }
+        if args.dry_run:
+            payload["command"] = daemon_cmd
+            payload["pid"] = None
+            payload["pid_alive"] = False
+            payload["remaining_seconds"] = int((until - now).total_seconds())
+            _json_or_print({**payload, "lines": _format_wait_status(payload)}, args.json)
+            return 0
+
+        proc = subprocess.Popen(
+            daemon_cmd,
+            cwd=str(workdir),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        payload["pid"] = proc.pid
+        payload["pid_alive"] = _pid_alive(proc.pid)
+        payload["remaining_seconds"] = int((until - now).total_seconds())
+        _write_json(state_path, payload)
+        _json_or_print({**payload, "lines": _format_wait_status(payload)}, args.json)
+        return 0
+
+    if state:
+        until = None
+        if isinstance(state.get("until"), str):
+            raw = state["until"]
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            try:
+                until = datetime.fromisoformat(raw).astimezone(timezone.utc)
+            except Exception:
+                until = None
+        pid = int(state.get("pid") or 0)
+        payload = {
+            **state,
+            "workdir": str(workdir),
+            "pid_alive": _pid_alive(pid),
+            "remaining_seconds": int((until - now).total_seconds()) if until else None,
+        }
+        if payload.get("active") and not payload.get("pid_alive"):
+            payload["status"] = "orphaned"
+        _json_or_print({**payload, "lines": _format_wait_status(payload)}, args.json)
+        return 0
+
+    payload = {"status": "idle", "active": False, "workdir": str(workdir)}
+    _json_or_print({**payload, "lines": _format_wait_status(payload)}, args.json)
+    return 0
+
+
+def _stop_callback_config_path() -> Path:
+    return _hermes_home() / "omh-stop-callbacks.json"
+
+
+def _split_tags(raw: str | None) -> list[str]:
+    if raw is None:
+        return []
+    return [tag.strip() for tag in raw.split(",") if tag.strip()]
+
+
+def _mask_secret(value: str | None) -> str | None:
+    if not value:
+        return value
+    if len(value) <= 6:
+        return "*" * len(value)
+    return value[:3] + "*" * (len(value) - 6) + value[-3:]
+
+
+def cmd_config_stop_callback(args: argparse.Namespace) -> int:
+    config_path = _stop_callback_config_path()
+    config = _read_json(config_path)
+    providers = config.setdefault("providers", {})
+    provider = providers.setdefault(args.provider, {"enabled": False, "tags": []})
+
+    if args.enable:
+        provider["enabled"] = True
+    if args.disable:
+        provider["enabled"] = False
+
+    for field in ["token", "chat", "webhook", "path"]:
+        value = getattr(args, field, None)
+        if value is not None:
+            provider[field] = value
+
+    tags = list(provider.get("tags") or [])
+    if args.tag_list is not None:
+        tags = _split_tags(args.tag_list)
+    for tag in _split_tags(args.add_tag):
+        if tag not in tags:
+            tags.append(tag)
+    remove_tags = set(_split_tags(args.remove_tag))
+    if remove_tags:
+        tags = [tag for tag in tags if tag not in remove_tags]
+    if args.clear_tags:
+        tags = []
+    provider["tags"] = tags
+
+    _write_json(config_path, config)
+    sanitized = dict(provider)
+    if "token" in sanitized:
+        sanitized["token"] = _mask_secret(sanitized.get("token"))
+    payload = {
+        "config_path": str(config_path),
+        "provider": args.provider,
+        "config": sanitized,
+        "success": True,
+        "lines": [
+            f"config: {config_path}",
+            f"provider: {args.provider}",
+            f"enabled: {sanitized.get('enabled')}",
+            f"tags: {', '.join(sanitized.get('tags') or []) or '(none)'}",
+        ],
+    }
+    _json_or_print(payload, args.json)
+    return 0
+
+
 def cmd_cancel(args: argparse.Namespace) -> int:
     targets: list[tuple[str, str | None]] = []
     if args.mode:
@@ -621,6 +924,26 @@ def cmd_skill(args: argparse.Namespace) -> int:
         print(json.dumps({"removed": removed}, indent=2) if args.json else "\n".join(removed or ["not found"]))
         return 0
 
+    if args.skill_action == "edit":
+        target = None
+        for skill in _iter_skills(args.scope):
+            if skill["name"] == args.name:
+                target = Path(skill["path"])
+                break
+        if target is None:
+            print("skill not found", file=sys.stderr)
+            return 1
+        if args.print_path:
+            print(target)
+            return 0
+        editor = args.editor or os.environ.get("EDITOR")
+        if not editor:
+            print(target)
+            return 0
+        command = shlex.split(editor) + [str(target)]
+        proc = subprocess.run(command, check=False)
+        return proc.returncode
+
     print("unknown skill action", file=sys.stderr)
     return 2
 
@@ -671,6 +994,35 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("team_args", nargs="*")
     p.set_defaults(func=cmd_team)
 
+    p = sub.add_parser("wait", help="run/start/stop a wait helper for rate-limit windows")
+    p.add_argument("--start", action="store_true")
+    p.add_argument("--stop", action="store_true")
+    p.add_argument("--minutes", type=int, default=15)
+    p.add_argument("--seconds", type=int, default=0)
+    p.add_argument("--until", help="absolute ISO time, e.g. 2026-05-20T10:30:00+08:00")
+    p.add_argument("--resume-cmd", help="shell command to run when wait finishes")
+    p.add_argument("--resume-timeout", type=int, default=300)
+    p.add_argument("--poll-interval", type=int, default=10)
+    p.add_argument("--workdir")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_wait)
+
+    p = sub.add_parser("config-stop-callback", help="configure stop-callback provider + tags")
+    p.add_argument("provider", choices=["telegram", "discord", "slack", "file", "webhook"])
+    p.add_argument("--enable", action="store_true")
+    p.add_argument("--disable", action="store_true")
+    p.add_argument("--token")
+    p.add_argument("--chat")
+    p.add_argument("--webhook")
+    p.add_argument("--path")
+    p.add_argument("--tag-list", help="comma-separated tags")
+    p.add_argument("--add-tag", help="comma-separated tags to append")
+    p.add_argument("--remove-tag", help="comma-separated tags to remove")
+    p.add_argument("--clear-tags", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_config_stop_callback)
+
     p = sub.add_parser("cancel", help="request cancellation for active modes")
     p.add_argument("mode", nargs="?")
     p.add_argument("--instance-id")
@@ -702,6 +1054,22 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--force", action="store_true")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_skill)
+
+    sp = skill_sub.add_parser("edit")
+    sp.add_argument("name")
+    sp.add_argument("--scope", choices=["project", "user", "bundled"])
+    sp.add_argument("--editor")
+    sp.add_argument("--print-path", action="store_true")
+    sp.set_defaults(func=cmd_skill)
+
+    p = sub.add_parser("_wait-daemon")
+    p.add_argument("--state-file", required=True)
+    p.add_argument("--workdir", required=True)
+    p.add_argument("--until", required=True)
+    p.add_argument("--resume-cmd")
+    p.add_argument("--resume-timeout", type=int, default=300)
+    p.add_argument("--poll-interval", type=int, default=10)
+    p.set_defaults(func=cmd_wait_daemon)
     return parser
 
 
