@@ -13,7 +13,7 @@ OMH is skill-first and plugin-optional:
 - Skills work standalone.
 - The optional plugin adds role injection, state tools, evidence tooling, keyword routing, CLI helpers, and strict anti-lazy/evidence enforcement hooks.
 
-[Quick Start](#quick-start) • [Workflow Map](#workflow-map) • [Features](#features) • [Documentation](#documentation)
+[Quick Start](#quick-start) • [Production Runbook](#production-upgrade-runbook-hermes-host) • [Capability Coverage](#core-capability-coverage-omc---omh) • [Strict Enforcer](#strict-enforcer-what-is-actually-enforced) • [Documentation](#documentation)
 
 ---
 
@@ -71,6 +71,105 @@ Examples:
 - `ralplan this feature with risks and tests`
 - `ralph execute plan in .omh/plans/`
 - `autopilot build this end-to-end`
+
+## Production Upgrade Runbook (Hermes Host)
+
+This is the exact sequence to move from standalone `omc-enforcer` to OMH-native enforcement on a VPS host:
+
+```bash
+cd /root/.hermes/dev/oh-my-hermes
+git pull --ff-only
+pip install -e .
+python3 -m plugins.omh.cli setup
+python3 -m plugins.omh.cli doctor
+
+hermes plugins disable omc-enforcer || true
+hermes plugins enable omh
+
+# If this timer exists, disable it to prevent plugin toggles from being rewritten.
+systemctl --user disable --now omc-guardian.timer || true
+
+hermes plugins list | rg 'omh|omc-enforcer'
+python3 -m plugins.omh.cli status --json
+```
+
+Expected end state:
+- `hermes plugins list` shows `omh` enabled and `omc-enforcer` disabled.
+- Strict-enforcer state file exists at `~/.hermes/state/omh-enforcer/workflow-state.json`.
+- `status --json` returns active mode snapshots when workflows are running.
+
+## Core Capability Coverage (OMC -> OMH)
+
+This repo covers the core OMC README surface in Hermes-native form:
+
+| OMC Core Surface | OMH Surface | Implementation |
+| --- | --- | --- |
+| Setup / install checks | `omh setup`, `omh doctor`, `omh-setup` | `plugins/omh/cli.py` (`cmd_setup`, `cmd_doctor`) |
+| Runtime visibility | `omh status`, `omh hud`, `omh-hud` | `plugins/omh/cli.py`, `plugins/omh/omh_state.py` |
+| Provider advisor artifacts | `omh ask`, `omh-ask` | `plugins/omh/cli.py` (`cmd_ask`), artifacts in `.omh/artifacts/ask/` |
+| tmux worker orchestration | `omh team`, `omh-team` | `plugins/omh/cli.py` (`cmd_team`), logs in `.omh/team/` |
+| Workflow skills | `omh-deep-interview`, `omh-ralplan`, `omh-ralph`, `omh-autopilot`, `omh-ultrawork`, `omh-pipeline`, `omh-triage` | `plugins/omh/skills/*/SKILL.md` |
+| Role prompt injection | `[omh-role:NAME]` marker + automatic role loading | `plugins/omh/hooks/llm_hooks.py`, `plugins/omh/hooks/tool_hooks.py`, `plugins/omh/omh_roles.py` |
+| Keyword routing | first-turn routing context in `pre_llm_call` | `plugins/omh/omh_keywords.py`, `plugins/omh/hooks/llm_hooks.py` |
+| Strict anti-lazy / anti-fake-completion gate | `pre_llm_call` + `post_llm_call` + `pre_gateway_send` + tool evidence ledger | `plugins/omh/hooks/enforcer_hooks.py`, `plugins/omh/omh_enforcer_state.py` |
+| Cancel / wait / stop-callback / custom skills | `omh cancel`, `omh wait`, `omh config-stop-callback`, `omh skill` | `plugins/omh/cli.py`, `plugins/omh/omh_skill_injection.py` |
+
+Scope note:
+- OMH currently ships 10 role prompts; some long-tail OMC roles remain intentionally unported. See [`docs/gaps.md`](docs/gaps.md).
+
+## Strict Enforcer: What Is Actually Enforced
+
+When `OMH_ENFORCER_ENABLED=1` (default), OMH enforces hard gates instead of only relying on prompt discipline:
+
+1. Phase gate:
+`deep_interview -> ralplan -> ralph` (quick prefixes `ralph:`, `ralplan:`, `deep-interview:` are supported).
+2. Anti-lazy / anti-handoff gate:
+blocks replies that stop with reversible "should I continue?" handoff.
+3. Anti-fake-completion gate:
+completion claims without file paths, command output, test logs, or other evidence are blocked.
+4. Scope anti-shrink gate:
+user-declared batch size / task manifest is stored, and closing with smaller scope is blocked.
+5. Tool evidence ledger gate:
+Ralph cannot close unless ledger evidence exists (`post_tool_call` / history backfill).
+6. Destructive command gate:
+obviously destructive commands are blocked in `pre_tool_call` (for example `rm -rf /`, `git reset --hard`, `drop table` patterns).
+7. Outbound guard gate:
+`pre_gateway_send` re-checks user-visible output before send.
+
+Runtime controls:
+- `OMH_ENFORCER_ENABLED`: set `0` to disable strict enforcer.
+- `OMH_ENFORCER_STATE_FILE`: override ledger path.
+- Default ledger path: `~/.hermes/state/omh-enforcer/workflow-state.json`.
+
+## Compatibility and Conflict Matrix
+
+| Combination | Result | Recommendation |
+| --- | --- | --- |
+| `omh` + standalone `omc-enforcer` both enabled | Double enforcement and policy collisions are likely | Disable `omc-enforcer`; keep `omh` only |
+| `omh` + `omc-guardian.timer` active | Timer may rewrite plugin enable/disable state | Disable timer or remove its rewrite rule |
+| `omh` plugin + OMH skills | Supported and recommended | Keep both |
+| OMH skills without plugin | Works, but no hook-level enforcement/injection | Use for lightweight runs only |
+| OMH + existing custom skills | Supported; trigger-based custom-skill injection is built-in | Keep custom skills under `.omh/skills` or `~/.omh/skills` |
+
+## Validation and Rollback
+
+Smoke tests:
+
+```bash
+cd /root/.hermes/dev/oh-my-hermes
+python3 -m pytest plugins/omh/tests/test_enforcer_hooks.py -q
+python3 -m pytest plugins/omh/tests/test_enforcer_state.py -q
+python3 -m pytest plugins/omh/tests/test_cli.py -q
+```
+
+Rollback (if needed):
+
+```bash
+hermes plugins disable omh
+hermes plugins enable omc-enforcer
+# optional, only if your environment relied on guardian before:
+systemctl --user enable --now omc-guardian.timer
+```
 
 ## Workflow Map
 
