@@ -46,17 +46,17 @@ ln -snf "$PWD/plugins/omh/skills" ~/.hermes/skills/omh
 
 然后重启 Hermes，让 hooks 和 tools 生效。
 
-如果你之前用了独立 `omc-enforcer`，建议迁移到 OMH 内置强门禁：
+如果你之前用了其他 legacy 外部门禁插件，先停掉它，再启用 OMH：
 
 ```bash
-hermes plugins disable omc-enforcer
+hermes plugins disable <legacy-plugin-name>
 hermes plugins enable omh
 ```
 
-如果机器上有会强制回写插件配置的 `omc-guardian.timer`，需要先停用：
+如果机器上有会强制回写插件配置的 legacy guardian timer，也需要先停用：
 
 ```bash
-systemctl --user disable --now omc-guardian.timer
+systemctl --user disable --now <legacy-guardian-timer>
 ```
 
 ### 第三步：验证并开始使用
@@ -75,7 +75,7 @@ omh status
 <a id="cn-runbook"></a>
 ## 生产升级 Runbook（Hermes Host）
 
-下面这套命令是把独立 `omc-enforcer` 迁移到 OMH 内置门禁时的标准流程（VPS 场景）：
+下面这套命令是把 legacy 外部门禁迁移到 OMH 内置门禁时的标准流程（VPS 场景）：
 
 ```bash
 cd /root/.hermes/dev/oh-my-hermes
@@ -84,18 +84,19 @@ pip install -e .
 python3 -m plugins.omh.cli setup
 python3 -m plugins.omh.cli doctor
 
-hermes plugins disable omc-enforcer || true
+hermes plugins disable <legacy-plugin-name> || true
 hermes plugins enable omh
 
 # 如果该 timer 存在，需要停掉，避免插件启停状态被回写。
-systemctl --user disable --now omc-guardian.timer || true
+systemctl --user disable --now <legacy-guardian-timer> || true
 
-hermes plugins list | rg 'omh|omc-enforcer'
+hermes plugins list
 python3 -m plugins.omh.cli status --json
 ```
 
 期望结果：
-- `hermes plugins list` 显示 `omh enabled`、`omc-enforcer disabled`。
+- `hermes plugins list` 显示 `omh enabled`。
+- 不再存在冲突的 legacy 外部门禁插件或 guardian timer。
 - 严格门禁状态文件存在：`~/.hermes/state/omh-enforcer/workflow-state.json`。
 - 工作流运行时，`status --json` 能看到 active mode 快照。
 
@@ -148,8 +149,8 @@ Ralph 关闭前必须有真实工具执行证据（`post_tool_call` 或 history 
 
 | 组合 | 结果 | 建议 |
 | --- | --- | --- |
-| 同时启用 `omh` 与独立 `omc-enforcer` | 容易出现双重门禁和策略冲突 | 关闭 `omc-enforcer`，仅保留 `omh` |
-| `omh` + `omc-guardian.timer` 运行中 | timer 可能回写插件启停状态 | 停用 timer 或移除其回写规则 |
+| 同时启用 `omh` 与其他外部门禁插件 | 容易出现双重门禁和策略冲突 | 仅保留 OMH 作为单一门禁层 |
+| `omh` + legacy guardian timer 运行中 | timer 可能回写插件启停状态 | 停用 timer 或移除其回写规则 |
 | `omh` 插件 + OMH 技能 | 完整支持，推荐 | 同时保留 |
 | 只用 OMH 技能，不装插件 | 可运行，但没有 hook 级门禁/注入 | 仅适合轻量场景 |
 | OMH + 现有自定义技能 | 支持，且内置 trigger 注入 | 自定义技能放 `.omh/skills` 或 `~/.omh/skills` |
@@ -169,9 +170,9 @@ python3 -m pytest plugins/omh/tests/test_cli.py -q
 
 ```bash
 hermes plugins disable omh
-hermes plugins enable omc-enforcer
-# 可选：仅当你的环境之前依赖 guardian
-systemctl --user enable --now omc-guardian.timer
+# 可选：仅当你的环境确实依赖旧外部控制
+# hermes plugins enable <legacy-plugin-name>
+# systemctl --user enable --now <legacy-guardian-timer>
 ```
 
 ## 工作流地图

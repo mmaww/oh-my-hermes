@@ -84,8 +84,8 @@ Gateway output may only claim work that is supported by this ledger.
 2. Add a doctor command that verifies hook registration and runs synthetic
    gateway-block tests.
 3. Add regression tests for long report tails ending with `要继续吗?`.
-4. Add a migration path from existing `/root/.hermes/plugins/omc-enforcer` state
-   files to OMH-managed state.
+4. Add a migration path from existing legacy external-enforcer state files to
+   OMH-managed state.
 
 ## Non-goals for the first release
 

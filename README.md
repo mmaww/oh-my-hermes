@@ -46,17 +46,17 @@ ln -snf "$PWD/plugins/omh/skills" ~/.hermes/skills/omh
 
 Then restart Hermes so hooks/tools are reloaded.
 
-If you previously used standalone `omc-enforcer`, migrate to OMH-native enforcement:
+If you previously used another legacy external enforcer plugin, disable it before enabling OMH:
 
 ```bash
-hermes plugins disable omc-enforcer
+hermes plugins disable <legacy-plugin-name>
 hermes plugins enable omh
 ```
 
-If your host has an `omc-guardian.timer` that rewrites plugin settings, disable it:
+If your host has a legacy guardian timer that rewrites plugin settings, disable that timer:
 
 ```bash
-systemctl --user disable --now omc-guardian.timer
+systemctl --user disable --now <legacy-guardian-timer>
 ```
 
 ### Step 3: Verify and run
@@ -74,7 +74,7 @@ Examples:
 
 ## Production Upgrade Runbook (Hermes Host)
 
-This is the exact sequence to move from standalone `omc-enforcer` to OMH-native enforcement on a VPS host:
+This is the exact sequence to move from a legacy external enforcer setup to OMH-native enforcement on a VPS host:
 
 ```bash
 cd /root/.hermes/dev/oh-my-hermes
@@ -83,18 +83,19 @@ pip install -e .
 python3 -m plugins.omh.cli setup
 python3 -m plugins.omh.cli doctor
 
-hermes plugins disable omc-enforcer || true
+hermes plugins disable <legacy-plugin-name> || true
 hermes plugins enable omh
 
 # If this timer exists, disable it to prevent plugin toggles from being rewritten.
-systemctl --user disable --now omc-guardian.timer || true
+systemctl --user disable --now <legacy-guardian-timer> || true
 
-hermes plugins list | rg 'omh|omc-enforcer'
+hermes plugins list
 python3 -m plugins.omh.cli status --json
 ```
 
 Expected end state:
-- `hermes plugins list` shows `omh` enabled and `omc-enforcer` disabled.
+- `hermes plugins list` shows `omh` enabled.
+- No conflicting legacy external enforcer plugin or guardian timer is still active.
 - Strict-enforcer state file exists at `~/.hermes/state/omh-enforcer/workflow-state.json`.
 - `status --json` returns active mode snapshots when workflows are running.
 
@@ -145,8 +146,8 @@ Runtime controls:
 
 | Combination | Result | Recommendation |
 | --- | --- | --- |
-| `omh` + standalone `omc-enforcer` both enabled | Double enforcement and policy collisions are likely | Disable `omc-enforcer`; keep `omh` only |
-| `omh` + `omc-guardian.timer` active | Timer may rewrite plugin enable/disable state | Disable timer or remove its rewrite rule |
+| `omh` + another external enforcer plugin both enabled | Double enforcement and policy collisions are likely | Keep OMH as the single enforcement layer |
+| `omh` + legacy guardian timer active | Timer may rewrite plugin enable/disable state | Disable timer or remove its rewrite rule |
 | `omh` plugin + OMH skills | Supported and recommended | Keep both |
 | OMH skills without plugin | Works, but no hook-level enforcement/injection | Use for lightweight runs only |
 | OMH + existing custom skills | Supported; trigger-based custom-skill injection is built-in | Keep custom skills under `.omh/skills` or `~/.omh/skills` |
@@ -166,9 +167,9 @@ Rollback (if needed):
 
 ```bash
 hermes plugins disable omh
-hermes plugins enable omc-enforcer
-# optional, only if your environment relied on guardian before:
-systemctl --user enable --now omc-guardian.timer
+# optional: re-enable your previous external controls only if your environment requires them
+# hermes plugins enable <legacy-plugin-name>
+# systemctl --user enable --now <legacy-guardian-timer>
 ```
 
 ## Workflow Map
