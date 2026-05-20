@@ -32,7 +32,7 @@ omh-deep-research → omh-deep-interview → omh-ralplan → omh-ralph
 ## 安装
 
 ```bash
-hermes skills tap add witt3rd/oh-my-hermes
+hermes skills tap add mmaww/oh-my-hermes
 hermes skills install omh-deep-research omh-ralplan omh-ralplan-driver omh-deep-interview omh-ralph omh-ralph-driver omh-ralph-task omh-autopilot
 ```
 
