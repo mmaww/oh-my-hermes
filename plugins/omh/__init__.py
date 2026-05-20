@@ -3,7 +3,7 @@ OMH Plugin — infrastructure layer for Oh My Hermes skills.
 
 Registers:
   Tools: omh_state, omh_gather_evidence
-  Hooks: pre_llm_call, on_session_end, pre_tool_call
+  Hooks: pre_llm_call, on_session_end, pre_tool_call (+ strict enforcer hooks)
   Skills: bundled OMH workflow, utility, and orchestration skills
 """
 
@@ -66,6 +66,15 @@ def register(ctx):
     from .hooks.llm_hooks import pre_llm_call
     from .hooks.session_hooks import on_session_end
     from .hooks.tool_hooks import pre_tool_call
+    from .hooks.enforcer_hooks import (
+        enforcer_on_session_start,
+        enforcer_pre_llm_call,
+        enforcer_post_llm_call,
+        enforcer_pre_tool_call,
+        enforcer_post_tool_call,
+        enforcer_pre_gateway_send,
+        enforcer_on_session_end,
+    )
 
     ctx.register_tool("omh_state", _TOOLSET, OMH_STATE_SCHEMA, omh_state_handler,
                        description=OMH_STATE_SCHEMA["description"])
@@ -74,3 +83,15 @@ def register(ctx):
     ctx.register_hook("pre_llm_call", pre_llm_call)
     ctx.register_hook("on_session_end", on_session_end)
     ctx.register_hook("pre_tool_call", pre_tool_call)
+
+    # Strict anti-lazy / false-completion enforcement layer (OMC parity).
+    ctx.register_hook("on_session_start", enforcer_on_session_start)
+    ctx.register_hook("pre_llm_call", enforcer_pre_llm_call)
+    ctx.register_hook("post_llm_call", enforcer_post_llm_call)
+    ctx.register_hook("pre_tool_call", enforcer_pre_tool_call)
+    ctx.register_hook("post_tool_call", enforcer_post_tool_call)
+    # Backward-compatible outbound guard hook name used by existing strict deployments.
+    ctx.register_hook("pre_gateway_send", enforcer_pre_gateway_send)
+    ctx.register_hook("on_session_end", enforcer_on_session_end)
+    ctx.register_hook("on_session_finalize", enforcer_on_session_end)
+    ctx.register_hook("on_session_reset", enforcer_on_session_end)
