@@ -1,92 +1,156 @@
-# Oh My Hermes (OMH)
-
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-面向 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的多智能体编排技能集。  
-项目灵感来自 [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode)，并基于 Hermes 原生能力重新实现。
+# Oh My Hermes (OMH)
 
-OMH 提供可组合的技能，覆盖共识规划、需求澄清访谈、以及带证据的执行闭环；并提供可选插件用于 hook 注入、原子状态管理和证据采集。  
-技能可独立运行，零额外依赖。
+[![GitHub stars](https://img.shields.io/github/stars/mmaww/oh-my-hermes?style=flat&color=yellow)](https://github.com/mmaww/oh-my-hermes/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/mmaww/oh-my-hermes?style=flat&color=blue)](https://github.com/mmaww/oh-my-hermes/network/members)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-| 技能 | 作用 |
-| --- | --- |
-| **omh-deep-research** | 多阶段网络研究：问题拆解 → 并行检索 → 汇总综合 → 引用校验 |
-| **omh-ralplan** | 共识规划：Planner → Architect → Critic 多轮辩证直到收敛 |
-| **omh-ralplan-driver** | `omh-ralplan` 调度手册：上下文包、轮次调度、蒸馏汇总、最终复核 |
-| **omh-deep-interview** | 苏格拉底式需求访谈，带覆盖追踪 |
-| **omh-ralph** | 验证式执行：实现 → 验证 → 迭代直到完成 |
-| **omh-ralph-driver** | `omh-ralph` 调度手册：计划成形、并行批处理、证据收集、验证纪律、分级处置、最终架构复核 |
-| **omh-ralph-task** | 单任务执行纪律：任务封套、文件范围约束、与 HEAD 对照验证、提交作者控制、结构化回报 |
-| **omh-triage** *(v0.1)* | 问题池共识分诊：Maintainer（代码锚定）+ Skeptic（去冗） |
-| **omh-triage-driver** *(v0.1)* | `omh-triage` 调度手册：预检、角色轮次、蒸馏、用户签收门禁 |
-| **omh-autopilot** | 端到端自动流水线，串联三大核心技能 |
+面向 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的多智能体编排技能集，  
+灵感来自 [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode)，并按 Hermes 原生机制重构。
 
-推荐组合（陌生领域）：
+OMH 的设计是「技能优先、插件可选」：
+- 不装插件，技能也能跑。
+- 装插件后，获得角色注入、状态工具和证据采集能力。
 
-```text
-omh-deep-research → omh-deep-interview → omh-ralplan → omh-ralph
-```
+[快速开始](#快速开始) • [工作流地图](#工作流地图) • [能力特性](#能力特性) • [文档](#文档)
 
-如果领域未知，也可以把 `omh-deep-research` 作为 `omh-autopilot` 的 Phase -1。
+---
 
-## 安装
+## 快速开始
+
+### 第一步：添加 tap 并安装技能
 
 ```bash
 hermes skills tap add mmaww/oh-my-hermes
-hermes skills install omh-deep-research omh-ralplan omh-ralplan-driver omh-deep-interview omh-ralph omh-ralph-driver omh-ralph-task omh-autopilot
+hermes skills install omh-deep-research omh-deep-interview omh-ralplan omh-ralplan-driver omh-ralph omh-ralph-driver omh-ralph-task omh-triage omh-triage-driver omh-autopilot
 ```
 
-也可手动复制 `skills/<name>/` 到 `~/.hermes/skills/omh/`。
+### 第二步：安装可选插件（推荐）
 
-可选插件安装路径：`plugins/omh/` -> `~/.hermes/plugins/omh/`  
-插件依赖：Python 3.10+ 与 `pyyaml`。
+```bash
+mkdir -p ~/.hermes/plugins ~/.hermes/skills
+ln -snf "$PWD/plugins/omh" ~/.hermes/plugins/omh
+ln -snf "$PWD/plugins/omh/skills" ~/.hermes/skills/omh
+```
 
-本地开发（符号链接热更新）见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+然后重启 Hermes，让 hooks 和 tools 生效。
 
-## 快速选择
+### 第三步：验证并开始使用
 
-- 需要先补领域背景：`omh-deep-research`
-- 只需要做计划：`omh-ralplan`
-- 你自己主持 ralplan：`omh-ralplan-driver`（与 `omh-ralplan` 同载）
-- 需求模糊：先 `omh-deep-interview`，再 `omh-ralplan`
-- 已有计划，需要执行：`omh-ralph`
-- 你自己主持 ralph：`omh-ralph-driver`（与 `omh-ralph` 同载）
-- 需要整理 issue backlog：`omh-triage`（主持时加 `omh-triage-driver`）
-- 端到端自动推进：`omh-autopilot`
+```bash
+hermes skills list | rg '^omh-'
+```
 
-首次运行（安装插件后），OMH 会在项目内自动初始化 `.omh/` 目录，包含说明文件和可选择性共享的 `.gitignore`。  
-若需提前初始化，不跑流程也可调用：`omh_state(action="init")`。
+示例：
+- `deep interview this project idea`
+- `ralplan this feature with risks and tests`
+- `ralph execute plan in .omh/plans/`
+- `autopilot build this end-to-end`
 
-## 已知缺口
+## 工作流地图
 
-- `omh-deep-research` 产出的研究结果，目前尚未完整接入 wiki / fact_store / memory 持久化。  
-  v1 的稳定接口是确认报告哨兵：`.omh/research/{slug}-report.md`（`status: confirmed`）。
-- `omh-deep-research` 的 verifier 在某些 Hermes 版本下可能不支持每次调用的工具隔离。  
-  此时 READ-ONLY 约束由 `role-research-verifier.md` 的流程约束保障（A5）。
+陌生领域推荐路径：
 
-## 成本范围（omh-deep-research）
+```text
+omh-deep-research -> omh-deep-interview -> omh-ralplan -> omh-ralph
+```
 
-典型顺利路径约 **5-8 次 `delegate_task` 调用**  
-（3-5 researcher + 0-1 followup + 1 synthesist + 1 verifier）。
+核心技能与职责：
 
-若综合阶段重试一次，通常在 **10-12 次调用**；  
-3-strike 上限场景约 **14-16 次调用** 后返回 BLOCKED。
+| 技能 | 作用 |
+| --- | --- |
+| `omh-deep-research` | 并行网页研究 + 综合 + 引用校验 |
+| `omh-deep-interview` | 苏格拉底式需求澄清与规格确认 |
+| `omh-ralplan` | Planner/Architect/Critic 共识规划 |
+| `omh-ralph` | 证据驱动执行循环（执行-验证-修复） |
+| `omh-triage` | Maintainer + Skeptic 共识分诊 backlog |
+| `omh-autopilot` | 访谈/规划/执行/QA/验证的一体化流水线 |
 
-## 环境要求
+调度类技能：
+
+| 调度技能 | 适用场景 |
+| --- | --- |
+| `omh-ralplan-driver` | 你在主持 ralplan 轮次，需要严格调度和蒸馏 |
+| `omh-ralph-driver` | 你在主持 ralph 批处理与 verifier 门禁 |
+| `omh-triage-driver` | 你在主持 issue/backlog 治理轮次 |
+| `omh-ralph-task` | 你是单个 ralph 任务执行者，需遵守封套纪律 |
+
+## 不知道先用哪个？
+
+- 需求模糊：先 `omh-deep-interview`
+- 目标明确但领域知识不确定：先 `omh-deep-research`
+- 需要先把方案做扎实：`omh-ralplan`
+- 已有方案，强调完成质量：`omh-ralph`
+- 想一条链路自动推进：`omh-autopilot`
+
+## 为什么是 OMH
+
+- 不是单 Agent 猜方案，而是多角色共识规划。
+- 不是口头“已完成”，而是证据优先的执行闭环。
+- `.omh/` 状态持久化，支持中断恢复和跨轮推进。
+- 插件 hooks 降低提示词样板并强化角色边界。
+- 即便不装插件，也能使用技能主流程。
+
+## 能力特性
+
+### 编排模式
+
+| 模式 | 本质 | 适合场景 |
+| --- | --- | --- |
+| `omh-deep-interview` | 需求访谈循环 | 目标不清、边界不明 |
+| `omh-ralplan` | 多角色共识规划 | 中大型改动前的实施设计 |
+| `omh-ralph` | 持续执行+验证循环 | 要求高可靠交付与证据闭环 |
+| `omh-triage` | 共识式 backlog 治理 | 清理陈旧 issue、重铸有效需求 |
+| `omh-autopilot` | 组合全流程 | 从想法到交付的一站式推进 |
+
+### 插件能力（可选）
+
+`plugins/omh/` 提供：
+- `omh_state`：状态、锁、取消信号、角色加载
+- `omh_gather_evidence`：白名单验证命令采集
+- `pre_llm_call`：`[omh-role:NAME]` 角色注入
+- `pre_tool_call`：角色标记预校验
+- `on_session_end`：中断状态记录
+
+详见：[`docs/plugin.md`](docs/plugin.md)
+
+## 升级方式
+
+若通过 Hermes hub/tap 安装：
+
+```bash
+hermes skills check
+hermes skills update
+```
+
+若通过本地仓库 + symlink 运行：
+
+```bash
+git pull
+# 插件代码改动后重启 Hermes
+```
+
+## 依赖要求
 
 - Hermes Agent v0.7.0+
-- 插件模式额外需要：Python 3.10+、`pyyaml`
+- Python 3.10+（插件模式）
+- `pyyaml`（插件模式）
 
 ## 文档
 
-- [`docs/concepts.md`](docs/concepts.md) - 四个核心技能的工作方式
-- [`docs/plugin.md`](docs/plugin.md) - v2 插件（角色、hooks、工具）
-- [`docs/omh-delegate.md`](docs/omh-delegate.md) - 加固的 delegation 封装
+- [`docs/concepts.md`](docs/concepts.md) - 技能组合方式与设计逻辑
+- [`docs/plugin.md`](docs/plugin.md) - 插件 hooks、tools、角色注入机制
+- [`docs/omh-delegate.md`](docs/omh-delegate.md) - delegation 封装与持久化契约
+- [`docs/hermes-constraints.md`](docs/hermes-constraints.md) - Hermes 约束与 OMH 应对
 - [`docs/omc-comparison.md`](docs/omc-comparison.md) - 与 OMC 的设计对比
-- [`docs/hermes-constraints.md`](docs/hermes-constraints.md) - OMH 对 Hermes 约束的处理
-- [`docs/gaps.md`](docs/gaps.md) - 当前未完成能力
-- [`ROADMAP.md`](ROADMAP.md) - 版本规划与方向
+- [`docs/gaps.md`](docs/gaps.md) - 已知缺口与扩展方向
 - [`docs/strict-enforcement.md`](docs/strict-enforcement.md) - 严格执行与证据门禁规范
+- [`ROADMAP.md`](ROADMAP.md) - 版本路线
+
+## 贡献
+
+开发与测试流程见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
 ## 许可证
 

@@ -1,102 +1,156 @@
-# Oh My Hermes (OMH)
-
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+# Oh My Hermes (OMH)
+
+[![GitHub stars](https://img.shields.io/github/stars/mmaww/oh-my-hermes?style=flat&color=yellow)](https://github.com/mmaww/oh-my-hermes/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/mmaww/oh-my-hermes?style=flat&color=blue)](https://github.com/mmaww/oh-my-hermes/network/members)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 Multi-agent orchestration skills for [Hermes Agent](https://github.com/NousResearch/hermes-agent),
-inspired by [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode)
-and rebuilt natively for Hermes primitives.
+inspired by [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) and rebuilt for Hermes-native primitives.
 
-OMH provides composable skills for consensus planning, requirements
-interviewing, and verified execution — plus an optional plugin that adds
-hook-based role injection, atomic state management, and evidence gathering.
-Skills work standalone with zero dependencies.
+OMH is skill-first and plugin-optional:
+- Skills work standalone.
+- The optional plugin adds role injection, state tools, and evidence tooling.
 
-| Skill | What It Does |
-|-------|--------------|
-| **omh-deep-research** | Multi-phase web research: decompose → parallel search → synthesize → verify citations |
-| **omh-ralplan** | Consensus planning: Planner → Architect → Critic debate until agreement |
-| **omh-ralplan-driver** | Dispatcher's playbook for driving an `omh-ralplan` run — context-package authoring (where quality is born), round dispatch, distillation, final review |
-| **omh-deep-interview** | Socratic requirements interview with coverage tracking |
-| **omh-ralph** | Verified execution: implement → verify → iterate until done |
-| **omh-ralph-driver** | Dispatcher's playbook for driving an `omh-ralph` run — plan-shape, parallel batching, evidence gathering, verifier discipline, strike categorization, Step-7 final architect review, commit hygiene |
-| **omh-ralph-task** | Executor's discipline for a single `omh-ralph` task — task-envelope contract, file-scope rigidity, stash-verify-against-HEAD for sibling-task isolation, commit-author override, structured report-back shape |
-| **omh-triage** *(v0.1)* | Multi-role consensus triage of an issue backlog — Maintainer (code-anchored) + Skeptic (pruning); more roles coming after lived rounds. |
-| **omh-triage-driver** *(v0.1)* | Dispatcher's playbook for driving an `omh-triage` run — pre-flight backlog audit, role-pass dispatch, distillation, user sign-off gate |
-| **omh-autopilot** | Full pipeline composing all three skills end-to-end |
+[Quick Start](#quick-start) • [Workflow Map](#workflow-map) • [Features](#features) • [Documentation](#documentation)
 
-Composition (recommended pipeline for unfamiliar domains):
+---
 
-```
-omh-deep-research → omh-deep-interview → omh-ralplan → omh-ralph
-```
+## Quick Start
 
-(Or fold `omh-deep-research` in as Phase -1 of `omh-autopilot` when the
-domain is unfamiliar; otherwise start at the interview.)
-
-## Install
+### Step 1: Add tap and install OMH skills
 
 ```bash
 hermes skills tap add mmaww/oh-my-hermes
-hermes skills install omh-deep-research omh-ralplan omh-ralplan-driver omh-deep-interview omh-ralph omh-ralph-driver omh-ralph-task omh-autopilot
+hermes skills install omh-deep-research omh-deep-interview omh-ralplan omh-ralplan-driver omh-ralph omh-ralph-driver omh-ralph-task omh-triage omh-triage-driver omh-autopilot
 ```
 
-Or copy `skills/<name>/` to `~/.hermes/skills/omh/` manually.
+### Step 2: Install the optional plugin (recommended)
 
-For the optional plugin: install `plugins/omh/` to `~/.hermes/plugins/omh/`
-(requires Python 3.10+ and `pyyaml`).
+```bash
+mkdir -p ~/.hermes/plugins ~/.hermes/skills
+ln -snf "$PWD/plugins/omh" ~/.hermes/plugins/omh
+ln -snf "$PWD/plugins/omh/skills" ~/.hermes/skills/omh
+```
 
-For local development (live edits via symlinks), see [CONTRIBUTING.md](CONTRIBUTING.md).
+Then restart Hermes so hooks/tools are reloaded.
 
-## Getting Started
+### Step 3: Verify and run
 
-- **Need background on an unfamiliar domain?** → `omh-deep-research`
-- **Just need a plan?** → `omh-ralplan`
-- **Driving a ralplan run yourself?** → `omh-ralplan-driver` (load alongside `omh-ralplan`)
-- **Vague idea?** → `omh-deep-interview` then `omh-ralplan`
-- **Have a plan, need execution?** → `omh-ralph`
-- **Driving a ralph run yourself?** → `omh-ralph-driver` (load alongside `omh-ralph`)
-- **Grooming an issue backlog?** → `omh-triage` (load alongside `omh-triage-driver` if you're driving)
-- **End-to-end?** → `omh-autopilot`
+```bash
+hermes skills list | rg '^omh-'
+```
 
-OMH self-seeds a `.omh/` directory in the project on first use (with the
-plugin installed) — including a README explaining the convention and a
-`.gitignore` pre-configured for selective sharing. To scaffold up-front
-without running a workflow, call `omh_state(action="init")`.
+Examples:
+- `deep interview this project idea`
+- `ralplan this feature with risks and tests`
+- `ralph execute plan in .omh/plans/`
+- `autopilot build this end-to-end`
 
-## Known Gaps
+## Workflow Map
 
-- **wiki/fact_store/memory persistence** is not yet integrated for
-  research artifacts produced by `omh-deep-research`. The confirmed
-  report sentinel (`.omh/research/{slug}-report.md` with `status:
-  confirmed`) is the durable interface in v1; downstream skills consume
-  it directly. Persisting findings into `fact_store` or wiki is a
-  deferred Q2 item.
-- **Per-call subagent tool scoping** for the `omh-deep-research`
-  verifier may be unavailable depending on Hermes install; the
-  READ-ONLY contract is enforced by prose in `role-research-verifier.md`
-  in that case (A5).
+Recommended path for unfamiliar domains:
 
-## Cost Envelope (omh-deep-research)
+```text
+omh-deep-research -> omh-deep-interview -> omh-ralplan -> omh-ralph
+```
 
-A typical happy-path session is roughly **5-8 `delegate_task` calls**
-(3-5 researchers + 0-1 followup + 1 synthesist + 1 verifier). With one
-synthesis retry, expect **up to ~10-12 calls**. The 3-strike retry cap
-bounds worst-case at ~14-16 calls before BLOCKED is surfaced.
+Core skills and their jobs:
+
+| Skill | Job |
+| --- | --- |
+| `omh-deep-research` | Parallel web research with synthesis and citation verification |
+| `omh-deep-interview` | Socratic requirements clarification and spec confirmation |
+| `omh-ralplan` | Planner/Architect/Critic consensus implementation planning |
+| `omh-ralph` | Evidence-driven execution loop with verify/fix progression |
+| `omh-triage` | Backlog triage with Maintainer + Skeptic role pressure |
+| `omh-autopilot` | End-to-end composition across interview/plan/execute/QA/validation |
+
+Driver/dispatcher skills:
+
+| Driver Skill | Use when |
+| --- | --- |
+| `omh-ralplan-driver` | You are orchestrating a ralplan round and need strict dispatch discipline |
+| `omh-ralph-driver` | You are orchestrating ralph tasks/batches and verifier gating |
+| `omh-triage-driver` | You are orchestrating backlog grooming rounds |
+| `omh-ralph-task` | You are the executor for one bounded ralph task envelope |
+
+## Not Sure Where to Start?
+
+- Vague idea: run `omh-deep-interview` first.
+- Clear problem but unknown domain facts: run `omh-deep-research`.
+- Need a robust plan before coding: run `omh-ralplan`.
+- Plan exists and execution quality matters: run `omh-ralph`.
+- Want one pipeline to drive all phases: run `omh-autopilot`.
+
+## Why OMH
+
+- Consensus-first planning, not single-agent guesswork.
+- Evidence-first execution with explicit verifier pressure.
+- Stateful, resumable workflows under `.omh/`.
+- Plugin hooks reduce prompt boilerplate and enforce role boundaries.
+- Skills remain usable even without plugin installation.
+
+## Features
+
+### Orchestration Modes
+
+| Mode | What it is | Use for |
+| --- | --- | --- |
+| `omh-deep-interview` | Requirements interview loop | Ambiguous user goals |
+| `omh-ralplan` | Multi-role planning consensus | Medium/large implementation planning |
+| `omh-ralph` | Persistent execute+verify cycle | Reliable delivery with completion evidence |
+| `omh-triage` | Consensus issue/backlog grooming | Pruning stale items and recasting live issues |
+| `omh-autopilot` | Composed full pipeline | End-to-end implementation from idea |
+
+### Plugin Infrastructure (optional)
+
+The plugin at `plugins/omh/` provides:
+- `omh_state` tool for workflow state, locks, cancel signals, and role loading
+- `omh_gather_evidence` tool for allowlisted verification command capture
+- `pre_llm_call` hook for `[omh-role:NAME]` role injection
+- `pre_tool_call` hook for role marker validation
+- `on_session_end` hook for interruption bookkeeping
+
+See details: [`docs/plugin.md`](docs/plugin.md)
+
+## Updating
+
+If installed from Hermes hub/tap:
+
+```bash
+hermes skills check
+hermes skills update
+```
+
+If running from a local clone + symlink:
+
+```bash
+git pull
+# restart Hermes after plugin code changes
+```
 
 ## Requirements
 
-Hermes Agent v0.7.0+. The plugin additionally requires Python 3.10+ and
-`pyyaml`.
+- Hermes Agent v0.7.0+
+- Python 3.10+ (plugin mode)
+- `pyyaml` (plugin mode)
 
 ## Documentation
 
-- [`docs/concepts.md`](docs/concepts.md) — How the four skills work
-- [`docs/plugin.md`](docs/plugin.md) — The v2 plugin (roles, hooks, tools)
-- [`docs/omh-delegate.md`](docs/omh-delegate.md) — Hardened delegation wrapper
-- [`docs/omc-comparison.md`](docs/omc-comparison.md) — Origins and design choices vs OMC
-- [`docs/hermes-constraints.md`](docs/hermes-constraints.md) — How OMH works around Hermes limits
-- [`docs/gaps.md`](docs/gaps.md) — What's not built yet
-- [`ROADMAP.md`](ROADMAP.md) — Versions and direction
+- [`docs/concepts.md`](docs/concepts.md) - How skills compose and why the flow works
+- [`docs/plugin.md`](docs/plugin.md) - Plugin hooks, tools, and role injection model
+- [`docs/omh-delegate.md`](docs/omh-delegate.md) - Delegation wrapper and persistence contract
+- [`docs/hermes-constraints.md`](docs/hermes-constraints.md) - Hermes runtime constraints and OMH workarounds
+- [`docs/omc-comparison.md`](docs/omc-comparison.md) - Design comparison with OMC
+- [`docs/gaps.md`](docs/gaps.md) - Known gaps and planned expansions
+- [`docs/strict-enforcement.md`](docs/strict-enforcement.md) - Strict execution/evidence enforcement profile
+- [`ROADMAP.md`](ROADMAP.md) - Version direction
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local dev setup, testing, and symlink workflow.
 
 ## License
 
