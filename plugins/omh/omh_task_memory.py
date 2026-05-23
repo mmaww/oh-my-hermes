@@ -14,7 +14,7 @@ from .omh_state import state_read, state_write
 
 TASK_MEMORY_MODE = "task-memory"
 TASK_MEMORY_META_MODE = "task-memory-meta"
-_TASK_MEMORY_SCHEMA = 1
+_TASK_MEMORY_SCHEMA = 2
 
 _TASK_START_VERBS = (
     "implement", "implementing", "write", "create", "create", "build", "fix", "optimize",
@@ -36,6 +36,82 @@ _NON_TASK_SMALL = {"hi", "ok", "你好", "嗨", "行", "好的", "okay", "thank 
 _MAX_TURNS_PER_TASK = 12
 _MAX_TURN_CHARS = 500
 _MAX_CONTEXT_CHARS = 2400
+_MAX_CRITICAL_ANCHORS = 12
+_MAX_ANCHOR_CHARS = 150
+
+_CRITICAL_KEYWORDS = (
+    "必须",
+    "务必",
+    "一定",
+    "不得",
+    "不要",
+    "禁止",
+    "请确保",
+    "至少",
+    "最多",
+    "并且",
+    "只能",
+    "每",
+    "must",
+    "must not",
+    "at least",
+    "no more than",
+    "must include",
+    "must avoid",
+)
+
+_CRITICAL_COUNT_RE = re.compile(
+    r"(?:\d+|[一二三四五六七八九十百千万]+)\s*(?:遍|次|轮|回|份|项|张|条|秒|分钟|小时|天|周|月|个|个数|次序|场景|文件|路径)?"
+)
+_SENTENCE_SPLIT_RE = re.compile(r"[。！？；;!?\n\r]+")
+
+
+def _normalize_anchor(text: str) -> str:
+    if not isinstance(text, str):
+        text = str(text)
+    return " ".join(text.replace("\u0000", " ").split())
+
+
+def _extract_critical_anchors(text: str) -> List[str]:
+    if not isinstance(text, str):
+        return []
+    anchors: List[str] = []
+    seen = set()
+    for segment in _SENTENCE_SPLIT_RE.split(text):
+        cleaned = _normalize_anchor(segment.strip("- \t"))
+        if not cleaned or len(cleaned) < 6:
+            continue
+        lowered = cleaned.lower()
+        if not _CRITICAL_COUNT_RE.search(cleaned) and not any(keyword in lowered for keyword in _CRITICAL_KEYWORDS):
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        anchors.append(_truncate(cleaned, _MAX_ANCHOR_CHARS))
+    return anchors
+
+
+def _append_critical_anchors(task_record: Dict[str, Any], text: str) -> None:
+    anchors = task_record.setdefault("critical_anchors", [])
+    if not isinstance(anchors, list):
+        anchors = []
+    existing = [a for a in anchors if isinstance(a, str)]
+    added = _extract_critical_anchors(text)
+    if not added:
+        task_record["critical_anchors"] = existing[-_MAX_CRITICAL_ANCHORS:]
+        return
+
+    merged = existing + added
+    seen = []
+    for item in merged:
+        norm = item.strip()
+        if not norm:
+            continue
+        if norm in seen:
+            continue
+        seen.append(norm)
+    task_record["critical_anchors"] = seen[-_MAX_CRITICAL_ANCHORS:]
 
 
 def _slugify(value: str, max_len: int = 80) -> str:
@@ -175,12 +251,20 @@ def _build_memory_block(session_id: str, task_id: str, task_record: Dict[str, An
         manifest_preview = "; ".join([str(x).strip() for x in manifest[:2] if str(x).strip()])
     else:
         manifest_preview = ""
+    anchors = task_record.get("critical_anchors", [])
+    anchor_lines: List[str] = []
+    if isinstance(anchors, list):
+        for anchor in anchors[-_MAX_CRITICAL_ANCHORS:]:
+            anchor_lines.append(f"  - {str(anchor).strip()}")
 
     lines = [
         f"[OMH TASK MEMORY] session={session_id} task={task_id}",
     ]
     if manifest_preview:
         lines.append(f"- Manifest: {_truncate(manifest_preview, 300)}")
+    if anchor_lines:
+        lines.append("- Critical anchors (hard-to-drop):")
+        lines.extend(anchor_lines)
     turns = task_record.get("turns", [])
     if turns:
         lines.append("- Recent turns:")
@@ -219,6 +303,7 @@ def _ensure_task_context(
             "created_at": _now_iso(),
             "manifest": manifest,
             "turns": [],
+            "critical_anchors": [],
         }
         if manifest:
             task_record["summary"] = manifest[0]
@@ -234,8 +319,12 @@ def _ensure_task_context(
             }
         if not task_record.get("task_id"):
             task_record["task_id"] = task_id
+        if "critical_anchors" not in task_record:
+            task_record["critical_anchors"] = []
 
+    _append_critical_anchors(task_record, user_message)
     _append_turn(task_record, "user", user_message)
+
     _write_task_file(session_key, task_id, task_record)
     meta["current_task_id"] = task_id
     _write_task_meta(session_key, meta)

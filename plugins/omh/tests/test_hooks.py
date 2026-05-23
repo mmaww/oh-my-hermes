@@ -84,6 +84,29 @@ def test_pre_llm_call_injects_task_memory_with_hermes_session_env(monkeypatch):
         monkeypatch.delenv("HERMES_SESSION_ID", raising=False)
 
 
+def test_pre_llm_call_preserves_critical_anchor_terms():
+    session_id = "task-memory-anchor-session-01"
+    result1 = pre_llm_call(
+        is_first_turn=True,
+        session_id=session_id,
+        user_message="帮我做 10 遍实验，每遍必须输出截图并附加日志。",
+    )
+    assert result1 is not None
+    ctx1 = result1["context"]
+    assert "Critical anchors (hard-to-drop)" in ctx1
+    assert "10 遍" in ctx1
+
+    result2 = pre_llm_call(
+        is_first_turn=False,
+        session_id=session_id,
+        user_message="继续补充第 6 遍的细节。",
+    )
+    assert result2 is not None
+    ctx2 = result2["context"]
+    assert "Critical anchors (hard-to-drop)" in ctx2
+    assert "10 遍" in ctx2
+
+
 # ---------------------------------------------------------------------------
 # pre_llm_call — first turn with active modes
 # ---------------------------------------------------------------------------

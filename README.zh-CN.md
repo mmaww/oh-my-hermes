@@ -46,17 +46,17 @@ ln -snf "$PWD/plugins/omh/skills" ~/.hermes/skills/omh
 
 然后重启 Hermes，让 hooks 和 tools 生效。
 
-如果你之前用了其他 legacy 外部门禁插件，先停掉它，再启用 OMH：
+如果你之前用了独立 `omc-enforcer`，建议迁移到 OMH 内置强门禁：
 
 ```bash
-hermes plugins disable <legacy-plugin-name>
+hermes plugins disable omc-enforcer
 hermes plugins enable omh
 ```
 
-如果机器上有会强制回写插件配置的 legacy guardian timer，也需要先停用：
+如果机器上有会强制回写插件配置的 `omc-guardian.timer`，需要先停用：
 
 ```bash
-systemctl --user disable --now <legacy-guardian-timer>
+systemctl --user disable --now omc-guardian.timer
 ```
 
 ### 第三步：验证并开始使用
@@ -75,7 +75,7 @@ omh status
 <a id="cn-runbook"></a>
 ## 生产升级 Runbook（Hermes Host）
 
-下面这套命令是把 legacy 外部门禁迁移到 OMH 内置门禁时的标准流程（VPS 场景）：
+下面这套命令是把独立 `omc-enforcer` 迁移到 OMH 内置门禁时的标准流程（VPS 场景）：
 
 ```bash
 cd /root/.hermes/dev/oh-my-hermes
@@ -84,22 +84,20 @@ pip install -e .
 python3 -m plugins.omh.cli setup
 python3 -m plugins.omh.cli doctor
 
-hermes plugins disable <legacy-plugin-name> || true
+hermes plugins disable omc-enforcer || true
 hermes plugins enable omh
 
 # 如果该 timer 存在，需要停掉，避免插件启停状态被回写。
-systemctl --user disable --now <legacy-guardian-timer> || true
+systemctl --user disable --now omc-guardian.timer || true
 
-hermes plugins list
+hermes plugins list | rg 'omh|omc-enforcer'
 python3 -m plugins.omh.cli status --json
 ```
 
 期望结果：
-- `hermes plugins list` 显示 `omh enabled`。
-- 不再存在冲突的 legacy 外部门禁插件或 guardian timer。
+- `hermes plugins list` 显示 `omh enabled`、`omc-enforcer disabled`。
 - 严格门禁状态文件存在：`~/.hermes/state/omh-enforcer/workflow-state.json`。
 - 工作流运行时，`status --json` 能看到 active mode 快照。
-- 任务记忆会落盘到 `~/.hermes/state/task-memory*`（repo 本地安装下通常是 `.omh/state/task-memory*`）并在每次 `pre_llm_call` 自动注入 `[OMH TASK MEMORY]`。
 
 <a id="cn-coverage"></a>
 ## 核心能力覆盖（OMC -> OMH）
@@ -115,7 +113,7 @@ python3 -m plugins.omh.cli status --json
 | 主工作流技能 | `omh-deep-interview`、`omh-ralplan`、`omh-ralph`、`omh-autopilot`、`omh-ultrawork`、`omh-pipeline`、`omh-triage` | `plugins/omh/skills/*/SKILL.md` |
 | 角色注入 | `[omh-role:NAME]` 标记 + 自动加载角色 prompt | `plugins/omh/hooks/llm_hooks.py`、`plugins/omh/hooks/tool_hooks.py`、`plugins/omh/omh_roles.py` |
 | 关键词路由 | `pre_llm_call` 首轮路由上下文注入 | `plugins/omh/omh_keywords.py`、`plugins/omh/hooks/llm_hooks.py` |
-| 任务级记忆 | 按任务持久化对话上下文，`pre_llm_call` 每次注入最近记录 | `plugins/omh/hooks/llm_hooks.py`、`plugins/omh/omh_task_memory.py` |
+| 任务记忆与关键约束锚点 | 每个任务独立存储记忆，并在每次 `pre_llm_call` 中注入关键约束 | `plugins/omh/omh_task_memory.py`、`plugins/omh/hooks/llm_hooks.py` |
 | 严格反偷懒/反伪完成 | `pre_llm_call` + `post_llm_call` + `pre_gateway_send` + 工具证据账本 | `plugins/omh/hooks/enforcer_hooks.py`、`plugins/omh/omh_enforcer_state.py` |
 | 取消/等待/通知/自定义技能 | `omh cancel`、`omh wait`、`omh config-stop-callback`、`omh skill` | `plugins/omh/cli.py`、`plugins/omh/omh_skill_injection.py` |
 
@@ -151,8 +149,8 @@ Ralph 关闭前必须有真实工具执行证据（`post_tool_call` 或 history 
 
 | 组合 | 结果 | 建议 |
 | --- | --- | --- |
-| 同时启用 `omh` 与其他外部门禁插件 | 容易出现双重门禁和策略冲突 | 仅保留 OMH 作为单一门禁层 |
-| `omh` + legacy guardian timer 运行中 | timer 可能回写插件启停状态 | 停用 timer 或移除其回写规则 |
+| 同时启用 `omh` 与独立 `omc-enforcer` | 容易出现双重门禁和策略冲突 | 关闭 `omc-enforcer`，仅保留 `omh` |
+| `omh` + `omc-guardian.timer` 运行中 | timer 可能回写插件启停状态 | 停用 timer 或移除其回写规则 |
 | `omh` 插件 + OMH 技能 | 完整支持，推荐 | 同时保留 |
 | 只用 OMH 技能，不装插件 | 可运行，但没有 hook 级门禁/注入 | 仅适合轻量场景 |
 | OMH + 现有自定义技能 | 支持，且内置 trigger 注入 | 自定义技能放 `.omh/skills` 或 `~/.omh/skills` |
@@ -172,9 +170,9 @@ python3 -m pytest plugins/omh/tests/test_cli.py -q
 
 ```bash
 hermes plugins disable omh
-# 可选：仅当你的环境确实依赖旧外部控制
-# hermes plugins enable <legacy-plugin-name>
-# systemctl --user enable --now <legacy-guardian-timer>
+hermes plugins enable omc-enforcer
+# 可选：仅当你的环境之前依赖 guardian
+systemctl --user enable --now omc-guardian.timer
 ```
 
 ## 工作流地图
@@ -276,7 +274,6 @@ omh skill list
 - `.omh/artifacts/ask/`：provider advisor 记录
 - `.omh/team/`：tmux worker 日志
 - `.omh/skills/`：project scope 可复用技能
-- `.omh/state/task-memory-*`：按任务持久化的会话记忆，支持长对话压缩后恢复上下文
 
 ### 插件能力（可选）
 

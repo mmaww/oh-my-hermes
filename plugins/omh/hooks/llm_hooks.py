@@ -27,7 +27,18 @@ def _resolve_session_id(kwargs: dict[str, Any]) -> str:
     This keeps task-memory injection stable even when adapters use alternate
     field names for session correlation.
     """
-    for key in ("session_id", "hermes_session_id", "conversation_id", "chat_id"):
+    for key in (
+        "session_id",
+        "hermes_session_id",
+        "conversation_id",
+        "chat_id",
+        "session",
+        "thread_id",
+        "thread",
+        "session_uuid",
+        "id",
+        "conversation",
+    ):
         value = kwargs.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -38,8 +49,18 @@ def _resolve_session_id(kwargs: dict[str, Any]) -> str:
             value = metadata.get(key)
             if isinstance(value, str) and value.strip():
                 return value.strip()
+        for key in ("session", "thread_id", "thread", "session_uuid", "conversation"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
 
     value = os.environ.get("HERMES_SESSION_ID")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    value = os.environ.get("HERMES_THREAD_ID")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    value = os.environ.get("HERMES_CONVERSATION_ID")
     if isinstance(value, str) and value.strip():
         return value.strip()
 

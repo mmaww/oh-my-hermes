@@ -46,17 +46,17 @@ ln -snf "$PWD/plugins/omh/skills" ~/.hermes/skills/omh
 
 Then restart Hermes so hooks/tools are reloaded.
 
-If you previously used another legacy external enforcer plugin, disable it before enabling OMH:
+If you previously used standalone `omc-enforcer`, migrate to OMH-native enforcement:
 
 ```bash
-hermes plugins disable <legacy-plugin-name>
+hermes plugins disable omc-enforcer
 hermes plugins enable omh
 ```
 
-If your host has a legacy guardian timer that rewrites plugin settings, disable that timer:
+If your host has an `omc-guardian.timer` that rewrites plugin settings, disable it:
 
 ```bash
-systemctl --user disable --now <legacy-guardian-timer>
+systemctl --user disable --now omc-guardian.timer
 ```
 
 ### Step 3: Verify and run
@@ -74,7 +74,7 @@ Examples:
 
 ## Production Upgrade Runbook (Hermes Host)
 
-This is the exact sequence to move from a legacy external enforcer setup to OMH-native enforcement on a VPS host:
+This is the exact sequence to move from standalone `omc-enforcer` to OMH-native enforcement on a VPS host:
 
 ```bash
 cd /root/.hermes/dev/oh-my-hermes
@@ -83,22 +83,20 @@ pip install -e .
 python3 -m plugins.omh.cli setup
 python3 -m plugins.omh.cli doctor
 
-hermes plugins disable <legacy-plugin-name> || true
+hermes plugins disable omc-enforcer || true
 hermes plugins enable omh
 
 # If this timer exists, disable it to prevent plugin toggles from being rewritten.
-systemctl --user disable --now <legacy-guardian-timer> || true
+systemctl --user disable --now omc-guardian.timer || true
 
-hermes plugins list
+hermes plugins list | rg 'omh|omc-enforcer'
 python3 -m plugins.omh.cli status --json
 ```
 
 Expected end state:
-- `hermes plugins list` shows `omh` enabled.
-- No conflicting legacy external enforcer plugin or guardian timer is still active.
+- `hermes plugins list` shows `omh` enabled and `omc-enforcer` disabled.
 - Strict-enforcer state file exists at `~/.hermes/state/omh-enforcer/workflow-state.json`.
 - `status --json` returns active mode snapshots when workflows are running.
-- Task memory is persisted at `~/.hermes/state/task-memory*` (`.omh/state/task-memory*` for repo-local installs) and auto-injected in each `pre_llm_call` as `[OMH TASK MEMORY]`.
 
 ## Core Capability Coverage (OMC -> OMH)
 
@@ -113,7 +111,7 @@ This repo covers the core OMC README surface in Hermes-native form:
 | Workflow skills | `omh-deep-interview`, `omh-ralplan`, `omh-ralph`, `omh-autopilot`, `omh-ultrawork`, `omh-pipeline`, `omh-triage` | `plugins/omh/skills/*/SKILL.md` |
 | Role prompt injection | `[omh-role:NAME]` marker + automatic role loading | `plugins/omh/hooks/llm_hooks.py`, `plugins/omh/hooks/tool_hooks.py`, `plugins/omh/omh_roles.py` |
 | Keyword routing | first-turn routing context in `pre_llm_call` | `plugins/omh/omh_keywords.py`, `plugins/omh/hooks/llm_hooks.py` |
-| Task-level memory persistence | Per-task context snapshots persisted to state and injected on every `pre_llm_call` | `plugins/omh/hooks/llm_hooks.py`, `plugins/omh/omh_task_memory.py` |
+| Task memory resilience | per-task durable memory + hard constraint anchors injected to each `pre_llm_call` | `plugins/omh/omh_task_memory.py`, `plugins/omh/hooks/llm_hooks.py` |
 | Strict anti-lazy / anti-fake-completion gate | `pre_llm_call` + `post_llm_call` + `pre_gateway_send` + tool evidence ledger | `plugins/omh/hooks/enforcer_hooks.py`, `plugins/omh/omh_enforcer_state.py` |
 | Cancel / wait / stop-callback / custom skills | `omh cancel`, `omh wait`, `omh config-stop-callback`, `omh skill` | `plugins/omh/cli.py`, `plugins/omh/omh_skill_injection.py` |
 
@@ -148,8 +146,8 @@ Runtime controls:
 
 | Combination | Result | Recommendation |
 | --- | --- | --- |
-| `omh` + another external enforcer plugin both enabled | Double enforcement and policy collisions are likely | Keep OMH as the single enforcement layer |
-| `omh` + legacy guardian timer active | Timer may rewrite plugin enable/disable state | Disable timer or remove its rewrite rule |
+| `omh` + standalone `omc-enforcer` both enabled | Double enforcement and policy collisions are likely | Disable `omc-enforcer`; keep `omh` only |
+| `omh` + `omc-guardian.timer` active | Timer may rewrite plugin enable/disable state | Disable timer or remove its rewrite rule |
 | `omh` plugin + OMH skills | Supported and recommended | Keep both |
 | OMH skills without plugin | Works, but no hook-level enforcement/injection | Use for lightweight runs only |
 | OMH + existing custom skills | Supported; trigger-based custom-skill injection is built-in | Keep custom skills under `.omh/skills` or `~/.omh/skills` |
@@ -169,9 +167,9 @@ Rollback (if needed):
 
 ```bash
 hermes plugins disable omh
-# optional: re-enable your previous external controls only if your environment requires them
-# hermes plugins enable <legacy-plugin-name>
-# systemctl --user enable --now <legacy-guardian-timer>
+hermes plugins enable omc-enforcer
+# optional, only if your environment relied on guardian before:
+systemctl --user enable --now omc-guardian.timer
 ```
 
 ## Workflow Map
@@ -273,7 +271,6 @@ Artifacts and runtime state are written under `.omh/`:
 - `.omh/artifacts/ask/` — provider advisor transcripts
 - `.omh/team/` — tmux worker logs
 - `.omh/skills/` — project-scoped reusable skills
-- `.omh/state/task-memory-*` — per-task memory snapshots used to recover context across long conversations
 
 ### Plugin Infrastructure (optional)
 
