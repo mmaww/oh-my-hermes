@@ -1198,6 +1198,12 @@ def _check_ralph_v2(resp: str, session_id: str) -> Optional[Dict[str, Any]]:
 
     rl = resp.lower().strip()
 
+    # 所有问号都打回
+    if ? in resp or ？ in resp:
+        return {block: True, type: ralph:question_mark,
+                message: [OMC Phase 3] Question mark detected. Do not output questions in Ralph stage. Continue executing with tools and evidence.}
+
+
     # 停下来问问题
     ask = ["请问您", "您希望", "您想要", "您可以", "能否告诉我", "能否确认", "是否需要", "我想确认一下", "需要我", "需要您", "我可以继续吗",
            "这样做可以吗", "我有一个问题", "有个疑问", "想问一下"]
