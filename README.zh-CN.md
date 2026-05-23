@@ -144,7 +144,6 @@ Ralph 关闭前必须有真实工具执行证据（`post_tool_call` 或 history 
 - `OMH_ENFORCER_ENABLED`：设为 `0` 可关闭严格门禁。
 - `OMH_ENFORCER_STATE_FILE`：覆盖账本路径。
 - 默认账本路径：`~/.hermes/state/omh-enforcer/workflow-state.json`。
-- `OMH_RALPH_NO_PROMPT=1`：在 Ralph 阶段跳过“中途停下来提问/放弃”硬拦截；其余“有证据闭环/完成门禁”依旧生效。
 
 ## 兼容与冲突矩阵
 
