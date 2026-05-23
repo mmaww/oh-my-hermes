@@ -63,7 +63,7 @@ def register(ctx):
 
     from .tools.state_tool import OMH_STATE_SCHEMA, omh_state_handler
     from .tools.evidence_tool import OMH_EVIDENCE_SCHEMA, omh_evidence_handler
-    from .hooks.llm_hooks import pre_llm_call
+    from .hooks.llm_hooks import post_llm_call, pre_llm_call
     from .hooks.session_hooks import on_session_end
     from .hooks.tool_hooks import pre_tool_call
     from .hooks.enforcer_hooks import (
@@ -81,6 +81,7 @@ def register(ctx):
     ctx.register_tool("omh_gather_evidence", _TOOLSET, OMH_EVIDENCE_SCHEMA, omh_evidence_handler,
                        description=OMH_EVIDENCE_SCHEMA["description"])
     ctx.register_hook("pre_llm_call", pre_llm_call)
+    ctx.register_hook("post_llm_call", post_llm_call)
     ctx.register_hook("on_session_end", on_session_end)
     ctx.register_hook("pre_tool_call", pre_tool_call)
 

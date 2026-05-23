@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -42,6 +43,45 @@ def test_pre_llm_call_no_active_modes():
 def test_pre_llm_call_no_active_modes_subsequent():
     result = pre_llm_call(is_first_turn=False)
     assert result is None
+
+
+def test_pre_llm_call_injects_task_memory_with_session():
+    result = pre_llm_call(
+        is_first_turn=True,
+        session_id="task-memory-session-001",
+        user_message="请帮我写一个批处理脚本",
+    )
+    assert result is not None
+    ctx = result["context"]
+    assert "[OMH TASK MEMORY]" in ctx
+    first_match = re.search(r"task=([^\s]+)", ctx)
+    assert first_match is not None
+
+    result2 = pre_llm_call(
+        is_first_turn=False,
+        session_id="task-memory-session-001",
+        user_message="继续按这个要求补充日志级别配置",
+    )
+    assert result2 is not None
+    ctx2 = result2["context"]
+    assert "[OMH TASK MEMORY]" in ctx2
+    second_match = re.search(r"task=([^\s]+)", ctx2)
+    assert second_match is not None
+    assert second_match.group(1) == first_match.group(1)
+
+
+def test_pre_llm_call_injects_task_memory_with_hermes_session_env(monkeypatch):
+    monkeypatch.setenv("HERMES_SESSION_ID", "env-session-id")
+    try:
+        result = pre_llm_call(
+            is_first_turn=True,
+            user_message="帮我重构这个脚本",
+        )
+        assert result is not None
+        assert "[OMH TASK MEMORY]" in result["context"]
+        assert "env-session-id" in result["context"]
+    finally:
+        monkeypatch.delenv("HERMES_SESSION_ID", raising=False)
 
 
 # ---------------------------------------------------------------------------

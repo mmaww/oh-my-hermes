@@ -9,18 +9,47 @@ Returns None when neither role markers nor active modes are present (zero overhe
 """
 
 import logging
+import os
+from typing import Any
 
 from ..omh_roles import debug_print, extract_role_marker, load_role_prompt
 from ..omh_state import state_list_active
+from ..omh_task_memory import append_assistant_turn, prepare_task_memory_context
 from ..omh_keywords import keyword_routing_context
 from ..omh_skill_injection import custom_skill_context
 
 logger = logging.getLogger(__name__)
 
 
+def _resolve_session_id(kwargs: dict[str, Any]) -> str:
+    """Best-effort session_id resolution from runtime kwargs / metadata / env.
+
+    This keeps task-memory injection stable even when adapters use alternate
+    field names for session correlation.
+    """
+    for key in ("session_id", "hermes_session_id", "conversation_id", "chat_id"):
+        value = kwargs.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    metadata = kwargs.get("user_metadata")
+    if isinstance(metadata, dict):
+        for key in ("hermes_session_id", "session_id", "conversation_id", "chat_id"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+    value = os.environ.get("HERMES_SESSION_ID")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+
+    return ""
+
+
 def pre_llm_call(**kwargs) -> dict | None:
     """Inject role prompt and/or OMH mode context before each LLM call."""
     is_first_turn = kwargs.get("is_first_turn", False)
+    session_id = _resolve_session_id(kwargs)
     if is_first_turn:
         preview = (kwargs.get("user_message") or "")[:80].replace("\n", "\\n")
         debug_print(f"pre_llm_call: first_turn user_message preview: {preview!r}")
@@ -97,6 +126,41 @@ def pre_llm_call(**kwargs) -> dict | None:
                 f"Use omh_state(action='read', mode='<mode>') to reload state if needed."
             )
 
+    # --- Task memory (must inject per task on every call when session_id is present) ---
+    if session_id:
+        try:
+            user_message = kwargs.get("user_message") or ""
+            memory_context = prepare_task_memory_context(
+                session_id=session_id,
+                user_message=user_message,
+                is_first_turn=is_first_turn,
+            )
+            if memory_context:
+                context_parts.append(memory_context)
+        except Exception as e:
+            logger.warning(
+                "pre_llm_call: failed to load task memory (session=%s): %s",
+                session_id,
+                e,
+            )
+
     if not context_parts:
         return None
     return {"context": "\n\n".join(context_parts)}
+
+
+def post_llm_call(**kwargs) -> None:
+    """Persist assistant response into the active task-memory file."""
+    session_id = _resolve_session_id(kwargs)
+    assistant_response = kwargs.get("assistant_response", "")
+    if not session_id:
+        return None
+    try:
+        append_assistant_turn(session_id, assistant_response)
+    except Exception as e:
+        logger.warning(
+            "post_llm_call: failed to persist task memory (session=%s): %s",
+            session_id,
+            e,
+        )
+    return None
