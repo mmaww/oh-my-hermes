@@ -106,7 +106,7 @@ def test_post_tool_evidence_allows_ralph_close(tmp_path, monkeypatch):
         is_error=False,
     )
 
-    result = enforcer_post_llm_call(
+    first = enforcer_post_llm_call(
         session_id="enf-close",
         assistant_response=(
             "任务已全部完成。\n"
@@ -117,10 +117,92 @@ def test_post_tool_evidence_allows_ralph_close(tmp_path, monkeypatch):
         ),
     )
 
-    assert result is None
+    assert first is not None
+    assert first.get("type") == "ralph:close_check_not_enough"
+
+    second = enforcer_post_llm_call(
+        session_id="enf-close",
+        assistant_response=(
+            "任务已全部完成。\n"
+            "改动文件: /tmp/example.py:1\n"
+            "验证：pytest -q\n"
+            "命令输出: 12 passed in 0.10s\n"
+            "无待办，无已知错误。"
+        ),
+    )
+    assert second is not None
+    assert second.get("type") == "ralph:close_check_not_enough"
+
+    third = enforcer_post_llm_call(
+        session_id="enf-close",
+        assistant_response=(
+            "任务已全部完成。\n"
+            "改动文件: /tmp/example.py:1\n"
+            "验证：pytest -q\n"
+            "命令输出: 12 passed in 0.10s\n"
+            "无待办，无已知错误。"
+        ),
+    )
+
+    assert third is None
     state = get_state("enf-close")
     assert state.current_phase == "completed"
     assert state.completion_verified is True
+    assert state.ralph_close_checks == 0
+
+
+def test_ralph_question_marks_block_and_reset_close_checks(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OMH_ENFORCER_STATE_FILE", str(tmp_path / "workflow-state.json"))
+    monkeypatch.setenv("OMH_ENFORCER_ENABLED", "1")
+
+    set_phase("enf-question-mark", "ralph")
+    enforcer_post_tool_call(
+        session_id="enf-question-mark",
+        tool_name="terminal",
+        args={"cmd": "pytest -q"},
+        result="12 passed in 0.10s\nexit code 0",
+        tool_call_id="tool-question-mark",
+        is_error=False,
+    )
+
+    first = enforcer_post_llm_call(
+        session_id="enf-question-mark",
+        assistant_response=(
+            "任务已全部完成。\n"
+            "改动文件: /tmp/example.py:1\n"
+            "验证：pytest -q\n"
+            "命令输出: 12 passed in 0.10s\n"
+            "无待办，无已知错误。"
+        ),
+    )
+    assert first is not None
+    assert first.get("type") == "ralph:close_check_not_enough"
+    state = get_state("enf-question-mark")
+    assert state.ralph_close_checks == 1
+
+    blocked_by_question = enforcer_post_llm_call(
+        session_id="enf-question-mark",
+        assistant_response="这个结果看起来正常？\n请确认还要继续吗？",
+    )
+    assert blocked_by_question is not None
+    assert blocked_by_question.get("type") == "ralph:question_mark"
+
+    state = get_state("enf-question-mark")
+    assert state.ralph_close_checks == 0
+
+    final = enforcer_post_llm_call(
+        session_id="enf-question-mark",
+        assistant_response=(
+            "任务已全部完成。\n"
+            "改动文件: /tmp/example.py:1\n"
+            "验证：pytest -q\n"
+            "命令输出: 12 passed in 0.10s\n"
+            "无待办，无已知错误。"
+        ),
+    )
+    assert final is not None
+    assert final.get("type") == "ralph:close_check_not_enough"
 
 
 def test_scope_shrinkage_blocked(tmp_path, monkeypatch):

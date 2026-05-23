@@ -28,6 +28,16 @@ _CN_TASK_START_VERBS = (
 
 _TASK_PREFIXES = ("实现", "写", "创建", "修复", "优化", "重构", "写好", "做")
 
+_TASK_CONTINUATIONS = (
+    "继续",
+    "接着",
+    "补充",
+    "另外",
+    "此外",
+    "然后",
+    "再",
+)
+
 _TASK_LIST_RE = re.compile(
     r"(?m)^\s*(?:[-*+]\s+|\d+[.、)]\s+|[①②③④⑤⑥⑦⑧⑨⑩])\S+"
 )
@@ -158,6 +168,8 @@ def _looks_like_new_task(text: str) -> bool:
         return False
     lowered = stripped.lower()
     if lowered in _NON_TASK_SMALL:
+        return False
+    if any(lowered.startswith(prefix) for prefix in _TASK_CONTINUATIONS):
         return False
     if "?" in stripped or "？" in stripped:
         return False

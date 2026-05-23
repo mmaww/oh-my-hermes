@@ -27,6 +27,7 @@ from typing import Any, Dict, Optional
 from ..omh_enforcer_state import (
     clear_state,
     get_state,
+    increment_ralph_close_checks,
     increment_violation,
     mark_completed,
     mark_shortcut_detected,
@@ -35,6 +36,7 @@ from ..omh_enforcer_state import (
     record_task_manifest,
     record_tool_evidence,
     record_tool_intent,
+    reset_ralph_close_checks,
     request_cancel,
     set_phase,
 )
@@ -716,6 +718,14 @@ def _on_post_llm_call(
     resp = assistant_response or ""
     _record_history_tool_evidence(session_id, conversation_history)
 
+    if phase == WorkflowPhase.RALPH:
+        ralph_result = _check_ralph_v2(resp, session_id)
+        if ralph_result and ralph_result.get("block"):
+            _resume_ralph_after_block(session_id, phase, ralph_result)
+            increment_violation(session_id)
+            logger.warning("[omh-enforcer] BLOCKED phase=%s type=%s", phase, ralph_result.get("type"))
+            return ralph_result
+
     global_result = _check_general_anti_lazy(resp)
     if global_result:
         _resume_ralph_after_block(session_id, phase, global_result)
@@ -744,8 +754,6 @@ def _on_post_llm_call(
         if not result:
             set_phase(session_id, WorkflowPhase.RALPH)
             logger.info("[omh-enforcer] Advanced from ralplan -> ralph")
-    elif phase == WorkflowPhase.RALPH:
-        result = _check_ralph_v2(resp, session_id)
     else:
         result = None
 
@@ -1198,29 +1206,35 @@ def _check_ralph_v2(resp: str, session_id: str) -> Optional[Dict[str, Any]]:
 
     rl = resp.lower().strip()
 
-    # 所有问号都打回
-    if "?" in resp or "？" in resp:
-        return {"block": True, "type": "ralph:question_mark",
-                "message": "[OMC Phase 3] Question mark detected. Do not output questions in Ralph stage. Continue executing with tools and evidence."
-
+    if "?" in rl or "？" in rl:
+        reset_ralph_close_checks(session_id)
+        return {
+            "block": True,
+            "type": "ralph:question_mark",
+            "message": "[OMC Phase 3] 回复包含问号会被打回。Ralph 阶段不能提问，必须继续执行。",
+        }
 
     # 停下来问问题
     ask = ["请问您", "您希望", "您想要", "您可以", "能否告诉我", "能否确认", "是否需要", "我想确认一下", "需要我", "需要您", "我可以继续吗",
            "这样做可以吗", "我有一个问题", "有个疑问", "想问一下"]
     for p in ask:
         if p in rl and len(resp) < 500:
+            reset_ralph_close_checks(session_id)
             return {"block": True, "type": "ralph:stopped_to_ask",
                     "message": "[OMC Phase 3] DO NOT stop to ask questions. Continue executing with tool calls."}
 
     if _is_ralph_close_claim(resp):
         scope_result = _check_ralph_scope_completion(resp, session_id)
         if scope_result:
+            reset_ralph_close_checks(session_id)
             return scope_result
         ledger_result = _check_ledger_evidence(session_id)
         if ledger_result:
+            reset_ralph_close_checks(session_id)
             return ledger_result
         score = _ralph_completion_score(resp)
         if score < 99:
+            reset_ralph_close_checks(session_id)
             return {
                 "block": True,
                 "type": "ralph:premature_close",
@@ -1232,7 +1246,15 @@ def _check_ralph_v2(resp: str, session_id: str) -> Optional[Dict[str, Any]]:
             }
         verifier_result = _independent_verifier_rejects_close(resp, session_id, score)
         if verifier_result:
+            reset_ralph_close_checks(session_id)
             return verifier_result
+        close_checks = increment_ralph_close_checks(session_id)
+        if close_checks < 3:
+            return {
+                "block": True,
+                "type": "ralph:close_check_not_enough",
+                "message": f"[OMC Phase 3] Ralph 关闭通过核验不足 {close_checks}/3，继续执行并补充可验证证据，给出第3次核验收官。",
+            }
         mark_completed(session_id, f"score={score}; evidence={_ledger_evidence_summary(session_id)}")
         logger.info("[omh-enforcer] Ralph completed with score=%s session=%s", score, session_id)
         return None
@@ -1250,6 +1272,7 @@ def _check_ralph_v2(resp: str, session_id: str) -> Optional[Dict[str, Any]]:
     claims = ["已经完成", "已完成", "已经实现", "已经创建", "已经修复", "已经解决", "已经添加"]
     for c in claims:
         if c in rl:
+            reset_ralph_close_checks(session_id)
             has_ev = (bool(re.search(r'[~/][a-zA-Z0-9/_-]+', resp)) or
                       '```' in resp or
                       any(cmd in resp for cmd in ['mkdir', 'touch', 'write_file', 'terminal', 'curl']))

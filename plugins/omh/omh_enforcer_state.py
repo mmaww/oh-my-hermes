@@ -59,6 +59,9 @@ class WorkflowState:
     completion_verified: bool = False
     """Whether the enforcer accepted this session as verified complete."""
 
+    ralph_close_checks: int = 0
+    """Number of consecutive Ralph close-check passes in current session."""
+
     cancel_requested: bool = False
     """Whether the user explicitly cancelled the workflow."""
 
@@ -115,6 +118,7 @@ def _state_to_dict(state: WorkflowState) -> Dict[str, Any]:
         "evidence_records": list(state.evidence_records),
         "tool_intents": list(state.tool_intents),
         "completion_verified": state.completion_verified,
+        "ralph_close_checks": state.ralph_close_checks,
         "cancel_requested": state.cancel_requested,
         "terminal_reason": state.terminal_reason,
     }
@@ -136,6 +140,7 @@ def _state_from_dict(data: Dict[str, Any]) -> WorkflowState:
         evidence_records=list(data.get("evidence_records") or []),
         tool_intents=list(data.get("tool_intents") or []),
         completion_verified=bool(data.get("completion_verified", False)),
+        ralph_close_checks=int(data.get("ralph_close_checks") or 0),
         cancel_requested=bool(data.get("cancel_requested", False)),
         terminal_reason=str(data.get("terminal_reason") or ""),
     )
@@ -223,12 +228,34 @@ def set_phase(session_id: str, phase: Optional[str]) -> None:
     """
     with _lock:
         state = get_state(session_id)
+        prev_phase = state.current_phase
         state.current_phase = phase
+        if phase == "ralph" and prev_phase != "ralph":
+            state.ralph_close_checks = 0
         if phase not in {"completed", "cancelled"}:
             state.completion_verified = False
             state.terminal_reason = ""
         _touch(state)
         _save_to_disk_locked()
+
+
+def reset_ralph_close_checks(session_id: str) -> None:
+    """Reset Ralph close-check counter for a session."""
+    with _lock:
+        state = get_state(session_id)
+        state.ralph_close_checks = 0
+        _touch(state)
+        _save_to_disk_locked()
+
+
+def increment_ralph_close_checks(session_id: str) -> int:
+    """Increase Ralph close-check counter and return the new count."""
+    with _lock:
+        state = get_state(session_id)
+        state.ralph_close_checks += 1
+        _touch(state)
+        _save_to_disk_locked()
+        return state.ralph_close_checks
 
 
 def mark_skills_loaded(session_id: str, loaded: bool = True) -> None:
@@ -402,6 +429,7 @@ def mark_completed(session_id: str, reason: str = "") -> None:
         state = get_state(session_id)
         state.current_phase = "completed"
         state.completion_verified = True
+        state.ralph_close_checks = 0
         state.cancel_requested = False
         state.terminal_reason = str(reason or "verified complete")[:500]
         _touch(state)
