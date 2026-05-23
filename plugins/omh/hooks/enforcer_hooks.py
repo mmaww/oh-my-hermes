@@ -52,6 +52,16 @@ def _enforcer_enabled() -> bool:
     return str(raw).strip().lower() not in {"0", "false", "no", "off", "disable", "disabled"}
 
 
+def _ralph_no_prompt() -> bool:
+    """Skip ralph ask/giveup hard-stop patterns when explicitly enabled."""
+    value = (
+        os.environ.get("OMH_RALPH_NO_PROMPT")
+        or os.environ.get("HERMES_RALPH_NO_PROMPT")
+        or "0"
+    )
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "enabled", "enable"}
+
+
 class WorkflowPhase:
     NOT_STARTED = "not_started"
     DEEP_INTERVIEW = "deep_interview"
@@ -1199,12 +1209,13 @@ def _check_ralph_v2(resp: str, session_id: str) -> Optional[Dict[str, Any]]:
     rl = resp.lower().strip()
 
     # 停下来问问题
-    ask = ["请问您", "您希望", "您想要", "您可以", "能否告诉我", "能否确认", "是否需要", "我想确认一下", "需要我", "需要您", "我可以继续吗",
-           "这样做可以吗", "我有一个问题", "有个疑问", "想问一下"]
-    for p in ask:
-        if p in rl and len(resp) < 500:
-            return {"block": True, "type": "ralph:stopped_to_ask",
-                    "message": "[OMC Phase 3] DO NOT stop to ask questions. Continue executing with tool calls."}
+    if not _ralph_no_prompt():
+        ask = ["请问您", "您希望", "您想要", "您可以", "能否告诉我", "能否确认", "是否需要", "我想确认一下", "需要我", "需要您", "我可以继续吗",
+               "这样做可以吗", "我有一个问题", "有个疑问", "想问一下"]
+        for p in ask:
+            if p in rl and len(resp) < 500:
+                return {"block": True, "type": "ralph:stopped_to_ask",
+                        "message": "[OMC Phase 3] DO NOT stop to ask questions. Continue executing with tool calls."}
 
     if _is_ralph_close_claim(resp):
         scope_result = _check_ralph_scope_completion(resp, session_id)
@@ -1232,13 +1243,14 @@ def _check_ralph_v2(resp: str, session_id: str) -> Optional[Dict[str, Any]]:
         return None
 
     # 放弃
-    giveup = ["我放弃了", "放弃尝试", "无法完成", "无法解决", "超出了我的能力", "建议你手动", "需要人工干预", "需要手动", "暂时无法", "目前无法", "未能成功", "超出我的能力"]
-    for p in giveup:
-        if p in rl and len(resp) < 600:
-            has_hw = any(hw in rl for hw in ["硬件", "物理设备", "传感器", "实际设备"])
-            if not has_hw:
-                return {"block": True, "type": "ralph:giveup",
-                        "message": "[OMC Phase 3] Don't give up. Try a different approach."}
+    if not _ralph_no_prompt():
+        giveup = ["我放弃了", "放弃尝试", "无法完成", "无法解决", "超出了我的能力", "建议你手动", "需要人工干预", "需要手动", "暂时无法", "目前无法", "未能成功", "超出我的能力"]
+        for p in giveup:
+            if p in rl and len(resp) < 600:
+                has_hw = any(hw in rl for hw in ["硬件", "物理设备", "传感器", "实际设备"])
+                if not has_hw:
+                    return {"block": True, "type": "ralph:giveup",
+                            "message": "[OMC Phase 3] Don't give up. Try a different approach."}
 
     # 谎称完成但无证据
     claims = ["已经完成", "已完成", "已经实现", "已经创建", "已经修复", "已经解决", "已经添加"]

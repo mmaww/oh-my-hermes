@@ -141,6 +141,7 @@ Runtime controls:
 - `OMH_ENFORCER_ENABLED`: set `0` to disable strict enforcer.
 - `OMH_ENFORCER_STATE_FILE`: override ledger path.
 - Default ledger path: `~/.hermes/state/omh-enforcer/workflow-state.json`.
+- `OMH_RALPH_NO_PROMPT=1`: in Ralph phase, skip ask/giveup hard-stop blocks (do not stop for mid-task prompts); completion/evidence gates still apply.
 
 ## Compatibility and Conflict Matrix
 
