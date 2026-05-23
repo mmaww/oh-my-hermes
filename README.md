@@ -98,6 +98,7 @@ Expected end state:
 - No conflicting legacy external enforcer plugin or guardian timer is still active.
 - Strict-enforcer state file exists at `~/.hermes/state/omh-enforcer/workflow-state.json`.
 - `status --json` returns active mode snapshots when workflows are running.
+- Task memory is persisted at `~/.hermes/state/task-memory*` (`.omh/state/task-memory*` for repo-local installs) and auto-injected in each `pre_llm_call` as `[OMH TASK MEMORY]`.
 
 ## Core Capability Coverage (OMC -> OMH)
 
@@ -112,6 +113,7 @@ This repo covers the core OMC README surface in Hermes-native form:
 | Workflow skills | `omh-deep-interview`, `omh-ralplan`, `omh-ralph`, `omh-autopilot`, `omh-ultrawork`, `omh-pipeline`, `omh-triage` | `plugins/omh/skills/*/SKILL.md` |
 | Role prompt injection | `[omh-role:NAME]` marker + automatic role loading | `plugins/omh/hooks/llm_hooks.py`, `plugins/omh/hooks/tool_hooks.py`, `plugins/omh/omh_roles.py` |
 | Keyword routing | first-turn routing context in `pre_llm_call` | `plugins/omh/omh_keywords.py`, `plugins/omh/hooks/llm_hooks.py` |
+| Task-level memory persistence | Per-task context snapshots persisted to state and injected on every `pre_llm_call` | `plugins/omh/hooks/llm_hooks.py`, `plugins/omh/omh_task_memory.py` |
 | Strict anti-lazy / anti-fake-completion gate | `pre_llm_call` + `post_llm_call` + `pre_gateway_send` + tool evidence ledger | `plugins/omh/hooks/enforcer_hooks.py`, `plugins/omh/omh_enforcer_state.py` |
 | Cancel / wait / stop-callback / custom skills | `omh cancel`, `omh wait`, `omh config-stop-callback`, `omh skill` | `plugins/omh/cli.py`, `plugins/omh/omh_skill_injection.py` |
 
@@ -271,6 +273,7 @@ Artifacts and runtime state are written under `.omh/`:
 - `.omh/artifacts/ask/` — provider advisor transcripts
 - `.omh/team/` — tmux worker logs
 - `.omh/skills/` — project-scoped reusable skills
+- `.omh/state/task-memory-*` — per-task memory snapshots used to recover context across long conversations
 
 ### Plugin Infrastructure (optional)
 
