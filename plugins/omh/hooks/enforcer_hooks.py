@@ -1199,9 +1199,9 @@ def _check_ralph_v2(resp: str, session_id: str) -> Optional[Dict[str, Any]]:
     rl = resp.lower().strip()
 
     # 所有问号都打回
-    if ? in resp or ？ in resp:
-        return {block: True, type: ralph:question_mark,
-                message: [OMC Phase 3] Question mark detected. Do not output questions in Ralph stage. Continue executing with tools and evidence.}
+    if "?" in resp or "？" in resp:
+        return {"block": True, "type": "ralph:question_mark",
+                "message": "[OMC Phase 3] Question mark detected. Do not output questions in Ralph stage. Continue executing with tools and evidence."
 
 
     # 停下来问问题
