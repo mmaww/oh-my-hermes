@@ -99,6 +99,7 @@ python3 -m plugins.omh.cli status --json
 - 不再存在冲突的 legacy 外部门禁插件或 guardian timer。
 - 严格门禁状态文件存在：`~/.hermes/state/omh-enforcer/workflow-state.json`。
 - 工作流运行时，`status --json` 能看到 active mode 快照。
+- 任务记忆会落盘到 `~/.hermes/state/task-memory*`（repo 本地安装下通常是 `.omh/state/task-memory*`）并在每次 `pre_llm_call` 自动注入 `[OMH TASK MEMORY]`。
 
 <a id="cn-coverage"></a>
 ## 核心能力覆盖（OMC -> OMH）
@@ -114,6 +115,7 @@ python3 -m plugins.omh.cli status --json
 | 主工作流技能 | `omh-deep-interview`、`omh-ralplan`、`omh-ralph`、`omh-autopilot`、`omh-ultrawork`、`omh-pipeline`、`omh-triage` | `plugins/omh/skills/*/SKILL.md` |
 | 角色注入 | `[omh-role:NAME]` 标记 + 自动加载角色 prompt | `plugins/omh/hooks/llm_hooks.py`、`plugins/omh/hooks/tool_hooks.py`、`plugins/omh/omh_roles.py` |
 | 关键词路由 | `pre_llm_call` 首轮路由上下文注入 | `plugins/omh/omh_keywords.py`、`plugins/omh/hooks/llm_hooks.py` |
+| 任务级记忆 | 按任务持久化对话上下文，`pre_llm_call` 每次注入最近记录 | `plugins/omh/hooks/llm_hooks.py`、`plugins/omh/omh_task_memory.py` |
 | 严格反偷懒/反伪完成 | `pre_llm_call` + `post_llm_call` + `pre_gateway_send` + 工具证据账本 | `plugins/omh/hooks/enforcer_hooks.py`、`plugins/omh/omh_enforcer_state.py` |
 | 取消/等待/通知/自定义技能 | `omh cancel`、`omh wait`、`omh config-stop-callback`、`omh skill` | `plugins/omh/cli.py`、`plugins/omh/omh_skill_injection.py` |
 
@@ -274,6 +276,7 @@ omh skill list
 - `.omh/artifacts/ask/`：provider advisor 记录
 - `.omh/team/`：tmux worker 日志
 - `.omh/skills/`：project scope 可复用技能
+- `.omh/state/task-memory-*`：按任务持久化的会话记忆，支持长对话压缩后恢复上下文
 
 ### 插件能力（可选）
 
