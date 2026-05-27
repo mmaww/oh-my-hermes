@@ -254,6 +254,25 @@ def state_write(mode: str, data: dict, instance_id: str | None = None) -> dict:
             )
         _atomic_write(path, serialized)
         _invalidate_list_cache()
+
+        # Auto-set last_progress_at in ralph mode when a ralph-tasks task passes
+        if mode == "ralph-tasks":
+            tasks = data.get("tasks", []) if isinstance(data, dict) else []
+            if tasks and any(t.get("passes") for t in tasks):
+                try:
+                    ralph_path = _state_path("ralph", instance_id)
+                    if ralph_path.exists():
+                        ralph_raw = json.loads(ralph_path.read_text(encoding="utf-8"))
+                        ralph_inner = ralph_raw.get("data", ralph_raw)
+                        if ralph_inner.get("active", False):
+                            ralph_inner["last_progress_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                            ralph_path.write_text(
+                                json.dumps(_wrap_meta("ralph", ralph_inner), indent=2, ensure_ascii=False),
+                                encoding="utf-8"
+                            )
+                except Exception as e:
+                    logger.warning("state_write: failed to update ralph last_progress_at: %s", e)
+
         return {"success": True, "path": str(path)}
     except Exception as e:
         return {"success": False, "error": str(e)}
