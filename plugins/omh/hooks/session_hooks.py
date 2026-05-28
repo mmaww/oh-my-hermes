@@ -58,44 +58,45 @@ def _auto_continue_ralph(modes: list) -> None:
     Chain logic: cron session runs → writes next paper → on_session_end fires again
     → checks state again → if still pending, schedules another cron.
     """
+    import json as _json
+    from pathlib import Path as _Path
+
     for m in modes:
         if m["mode"] != "ralph":
             continue
         instance_id = m.get("instance_id")
         try:
-            # Read ralph-tasks state to check for pending tasks
-            tasks_result = state_read("ralph-tasks", instance_id=instance_id)
-            if not tasks_result.get("exists"):
+            # Guard: only auto-schedule if ralph is currently active
+            ralph_result = state_read("ralph", instance_id=instance_id)
+            ralph_data = ralph_result.get("data", {}) if ralph_result.get("exists") else {}
+            if not ralph_data.get("active"):
+                logger.debug("OMH auto-continue: ralph %s is not active, skipping", instance_id or "default")
                 continue
-            tasks_data = tasks_result["data"]
+
+            # Extract project_path from ralph state — authoritative source for state dir
+            project_path = ralph_data.get("project_path", "")
+
+            # Read ralph-tasks from the PROJECT's .omh/state/ (not gateway cwd's stale copy)
+            # Fixes bug: gateway cwd/.omh/state/ had 5/5 done while project had 673 pending
+            tasks_data = None
+            if project_path:
+                tasks_file = _Path(project_path) / ".omh" / "state" / f"ralph-tasks--{instance_id or 'default'}.json"
+                if tasks_file.exists():
+                    try:
+                        tasks_data = _json.loads(tasks_file.read_text())
+                    except Exception as e:
+                        logger.warning("OMH auto-continue: failed to read tasks from %s: %s", tasks_file, e)
+
+            # Fallback: read from gateway's state dir (legacy behavior)
+            if tasks_data is None:
+                tasks_result = state_read("ralph-tasks", instance_id=instance_id)
+                if not tasks_result.get("exists"):
+                    continue
+                tasks_data = tasks_result["data"]
+
             tasks = tasks_data.get("tasks", [])
             if not tasks:
                 continue
-
-            # Guard: only auto-schedule if ralph made progress this session
-            # (last_progress_at must be set by ralph when it marks a task passed)
-            ralph_result = state_read("ralph", instance_id=instance_id)
-            ralph_data = ralph_result.get("data", {}) if ralph_result.get("exists") else {}
-            last_progress = ralph_data.get("last_progress_at")
-            if not last_progress:
-                logger.debug("OMH auto-continue: ralph %s has no last_progress_at, skipping", instance_id or "default")
-                continue
-
-            # Check that progress was made recently (within last 5 minutes)
-            from datetime import datetime, timezone
-            try:
-                progress_dt = datetime.fromisoformat(last_progress)
-                if progress_dt.tzinfo is None:
-                    progress_dt = progress_dt.replace(tzinfo=timezone.utc)
-                age_seconds = (datetime.now(timezone.utc) - progress_dt).total_seconds()
-                if age_seconds > 300:
-                    logger.debug(
-                        "OMH auto-continue: ralph %s last progress was %ds ago (>300s), skipping",
-                        instance_id or "default", int(age_seconds)
-                    )
-                    continue
-            except Exception:
-                pass  # If parse fails, assume recent
 
             # Count pending (passes=False or not completed)
             pending = [t for t in tasks if not t.get("passes", False)]
@@ -104,16 +105,56 @@ def _auto_continue_ralph(modes: list) -> None:
                 continue
 
             logger.info(
-                "OMH auto-continue: ralph %s has %d pending tasks, scheduling cron job",
-                instance_id or "default", len(pending)
+                "OMH auto-continue: ralph %s has %d pending tasks (project: %s), scheduling cron job",
+                instance_id or "default", len(pending), project_path or "cwd"
             )
 
+            # Guard 1: skip if a recurring cron job already handles this ralph instance
+            from cron.jobs import load_jobs
+            _existing_jobs = load_jobs()
+            _jobs_list = _existing_jobs.get("jobs", _existing_jobs) if isinstance(_existing_jobs, dict) else _existing_jobs
+            _recurring_exists = any(
+                j.get("name", "").startswith("ralph-paper-writer")
+                and j.get("schedule", {}).get("kind") in ("cron", "interval")
+                and j.get("enabled", True)
+                for j in _jobs_list
+                if isinstance(j, dict)
+            )
+            if _recurring_exists:
+                logger.debug("OMH auto-continue: recurring ralph-paper-writer cron exists, skipping oneshot")
+                continue
+
+            # Guard 2 (idempotent): remove ALL existing oneshots with the same name
+            # before creating a fresh one. Prevents TOCTOU race where multiple
+            # on_session_end hooks read stale state and each create a duplicate.
+            from cron.jobs import save_jobs
+            _oneshot_name = f"ralph-auto-{instance_id or 'default'}"
+            _before_count = len(_jobs_list)
+            _jobs_list = [j for j in _jobs_list if not (
+                isinstance(j, dict)
+                and j.get("name") == _oneshot_name
+                and j.get("schedule", {}).get("kind") == "once"
+            )]
+            _removed = _before_count - len(_jobs_list)
+            if _removed > 0:
+                logger.info("OMH auto-continue: removed %d stale oneshot(s) %s before creating fresh one",
+                            _removed, _oneshot_name)
+                _jobs_container = _existing_jobs
+                if isinstance(_jobs_container, dict):
+                    _jobs_container["jobs"] = _jobs_list  # type: ignore[index]
+                    save_jobs(_jobs_container)
+                else:
+                    save_jobs(_jobs_list)
+
             # Schedule a one-shot cron job
-            from cron.jobs import create_job, save_jobs, list_jobs
+            # create_job() already calls save_jobs() internally —
+            # do NOT append + save_jobs() again (caused duplicate bug)
+            from cron.jobs import create_job
 
             # Build a self-contained prompt for the cron job
+            cwd_instruction = f" IMPORTANT: workdir is {project_path}. All file paths are relative to this directory." if project_path else ""
             prompt = (
-                f"Continue ralph execution for paper-writing task. "
+                f"Continue ralph execution for paper-writing task.{cwd_instruction} "
                 f"Read state: omh_state(action='read', mode='ralph', instance_id='{instance_id or ''}'). "
                 f"Check for pending tasks and execute the next one. "
                 f"After completion, verify and update state. "
@@ -125,17 +166,14 @@ def _auto_continue_ralph(modes: list) -> None:
                 schedule="1m",
                 repeat=1,
                 name=f"ralph-auto-{instance_id or 'default'}",
-                deliver="origin",
-                skills=["paper-learning-workflow", "omh-ralph"],
+                deliver="local",
+                skills=["paper-collection-workflow", "omh-ralph"],
+                workdir=project_path if project_path else None,
             )
 
-            jobs = list_jobs(include_disabled=False)
-            jobs.append(new_job)
-            save_jobs(jobs)
-
             logger.info(
-                "OMH auto-continue: scheduled cron job %s for ralph %s",
-                new_job.get("id", "unknown"), instance_id or "default"
+                "OMH auto-continue: scheduled cron job %s for ralph %s (workdir=%s)",
+                new_job.get("id", "unknown"), instance_id or "default", project_path or "default"
             )
 
         except Exception as e:
